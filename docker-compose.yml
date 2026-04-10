@@ -1,0 +1,19 @@
+services:
+  stockmap:
+    build: .
+    # Or use a pre-built image if you push one:
+    # image: yourname/stockmap:latest
+
+    ports:
+      - "3000:3000"
+
+    # Load credentials from .env file
+    env_file:
+      - .env
+
+    # Persist data and images outside the container
+    volumes:
+      - ./stock.json:/app/stock.json
+      - ./images:/app/images
+
+    restart: unless-stopped

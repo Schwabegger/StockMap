@@ -1,0 +1,3393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockMap — Inventory Locator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700;9..40,800&display=swap"></noscript>
+<style>
+
+  :root {
+    --bg: #0f0f13;
+    --surface: #17171e;
+    --surface2: #1f1f2a;
+    --border: #2a2a38;
+    --accent: #e8ff47;
+    --accent2: #47c8ff;
+    --accent3: #ff6b6b;
+    --text: #e8e8f0;
+    --muted: #888899;
+    --radius: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  header h1 {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  header h1 span { color: var(--accent); }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  .tab {
+    padding: 7px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: .85rem;
+    font-weight: 600;
+    transition: all .15s;
+  }
+
+  .tab.active, .tab:hover {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+  }
+
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: 300px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .sidebar-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-section h3 {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .search-wrap {
+    position: relative;
+  }
+
+  .search-wrap input {
+    width: 100%;
+    padding: 9px 12px 9px 34px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .9rem;
+    outline: none;
+    transition: border-color .15s;
+  }
+
+  .search-wrap input:focus { border-color: var(--accent); }
+
+  .search-wrap .icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: .9rem;
+  }
+
+  .item-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .item-list::-webkit-scrollbar { width: 4px; }
+  .item-list::-webkit-scrollbar-track { background: transparent; }
+  .item-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .item-card {
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all .15s;
+    background: var(--surface2);
+  }
+
+  .item-card:hover, .item-card.selected {
+    border-color: var(--accent);
+    background: rgba(232,255,71,.06);
+  }
+
+  .item-card .iname {
+    font-weight: 600;
+    font-size: .9rem;
+  }
+
+  .item-card .imeta {
+    font-size: .75rem;
+    color: var(--muted);
+    margin-top: 3px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .qty-badge {
+    float: right;
+    background: var(--accent);
+    color: #000;
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* ── CONTENT AREA ── */
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .view { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .view.active { display: flex; }
+
+  /* ── ITEM DETAIL VIEW ── */
+  .item-detail {
+    padding: 28px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .detail-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+
+  .detail-icon {
+    width: 56px; height: 56px;
+    border-radius: 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    flex-shrink: 0;
+  }
+
+  .detail-title { font-size: 1.6rem; font-weight: 800; }
+  .detail-total {
+    margin-top: 4px;
+    font-size: .85rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .locations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .loc-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+
+  .loc-card:hover {
+    border-color: var(--accent2);
+    background: rgba(71,200,255,.06);
+  }
+
+  .loc-path {
+    font-size: .75rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    margin-bottom: 6px;
+  }
+
+  .loc-qty {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--accent);
+  }
+
+  .loc-label {
+    font-size: .8rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── MAP VIEW ── */
+  #mapView {
+    padding: 0;
+    overflow: hidden;
+    flex-direction: column;
+  }
+
+  .map-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .map-toolbar select, .map-toolbar button {
+    padding: 7px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .85rem;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .map-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+
+  .map-instructions {
+    font-size: .75rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    padding: 6px 16px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .map-canvas-wrap {
+    position: relative;
+    flex: 1;
+    overflow: hidden;
+    background: var(--surface2);
+  }
+
+  #mapCanvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* zoom controls */
+  .zoom-controls {
+    position: absolute;
+    bottom: 14px;
+    right: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 10;
+  }
+  .zoom-btn {
+    width: 32px; height: 32px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color .15s;
+    user-select: none;
+  }
+  .zoom-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .zoom-label {
+    text-align: center;
+    font-size: .65rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    padding: 2px 0;
+  }
+
+  #manageView {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .manage-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 700px) { .manage-grid { grid-template-columns: 1fr; } }
+
+  /* ── Photo gallery ──────────────────────────────────────────────────────── */
+  .photo-strip {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .photo-thumb {
+    position: relative;
+    width: 80px; height: 80px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color .15s;
+  }
+  .photo-thumb:hover { border-color: var(--accent2); }
+  .photo-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .photo-thumb .del-photo {
+    position: absolute; top: 2px; right: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #000b; color: #fff; font-size: .65rem;
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .15s;
+  }
+  .photo-thumb:hover .del-photo,
+  .photo-thumb:focus-within .del-photo { opacity: 1; }
+  .photo-add-btn {
+    width: 80px; height: 80px;
+    border-radius: 8px;
+    border: 1px dashed var(--border);
+    background: none; color: var(--muted);
+    cursor: pointer;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 3px; font-size: .65rem;
+    font-family: 'DM Sans', sans-serif;
+    transition: border-color .15s, color .15s;
+    flex-shrink: 0;
+  }
+  .photo-add-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .photo-add-btn .add-icon { font-size: 1.4rem; line-height: 1; }
+
+  /* Lightbox */
+  #photoLightbox {
+    position: fixed; inset: 0; z-index: 1000;
+    background: #000e;
+    display: none; align-items: center; justify-content: center; flex-direction: column;
+  }
+  #photoLightbox.open { display: flex; }
+  #photoLightbox img {
+    max-width: min(92vw, 900px); max-height: 78vh;
+    object-fit: contain; border-radius: 10px; user-select: none;
+    touch-action: pinch-zoom;
+  }
+  .lightbox-controls {
+    display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; justify-content: center;
+  }
+  .lb-btn {
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 8px 16px;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: .9rem;
+    transition: border-color .15s;
+  }
+  .lb-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .lb-btn.danger:hover { border-color: var(--accent3); color: var(--accent3); }
+  .lb-counter { color: var(--muted); font-family: 'Space Mono', monospace; font-size: .8rem; }
+  .lb-close {
+    position: absolute; top: 14px; right: 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 50%;
+    width: 36px; height: 36px; font-size: 1.1rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* Show bottom nav only on mobile — must come INSIDE the media query */
+  .mobile-nav { display: none; }
+  .mobile-fab { display: none; }
+
+  @media (max-width: 768px) {
+
+    /* Lock to viewport, prevent bounce scroll */
+    html, body {
+      height: 100%; height: 100dvh;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    /* Shrink header, hide desktop tabs */
+    header {
+      padding: 10px 16px;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1.1rem; }
+    .tabs { display: none; }
+
+    /* Bottom nav visible on mobile */
+    .mobile-nav {
+      display: flex;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 60px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      z-index: 500;
+    }
+    .mobile-nav-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      font-size: .62rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mobile-nav-btn .nav-icon { font-size: 1.4rem; line-height: 1; }
+    .mobile-nav-btn.active { color: var(--accent); }
+
+    /* FAB */
+    .mobile-fab {
+      position: fixed;
+      bottom: 70px; right: 16px;
+      width: 54px; height: 54px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      font-size: 1.7rem;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 16px #000a;
+      z-index: 490;
+      -webkit-tap-highlight-color: transparent;
+      display: none;
+    }
+    .mobile-fab.visible { display: flex; }
+
+    /* Main fills all space between header and bottom nav */
+    .main {
+      flex-direction: column;
+      padding-bottom: 60px;
+    }
+
+    /* Sidebar: full-width, hidden until items tab active */
+    .sidebar {
+      width: 100%;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      max-height: 42vh;
+      flex-shrink: 0;
+      display: none;
+    }
+    .sidebar.mobile-visible { display: flex; }
+
+    /* Content area fills remaining space */
+    .content { flex: 1; min-height: 0; }
+
+    /* Views */
+    .view.active { display: flex; flex-direction: column; }
+
+    /* Item detail */
+    .item-detail { padding: 16px; }
+    .detail-title { font-size: 1.2rem; }
+    .locations-grid { grid-template-columns: 1fr 1fr; }
+
+    /* Map */
+    #mapView { padding: 0; }
+    .map-instructions { font-size: .7rem; padding: 5px 12px; }
+    .map-toolbar { padding: 8px 12px; gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
+    .map-toolbar button { font-size: .78rem; padding: 6px 10px; white-space: nowrap; }
+    .zoom-controls { bottom: 8px; right: 8px; }
+    .zoom-btn { width: 36px; height: 36px; font-size: 1.2rem; }
+
+    /* Manage */
+    #manageView { padding: 12px; gap: 12px; }
+    .manage-grid { grid-template-columns: 1fr; gap: 12px; }
+    .card { padding: 14px; }
+    .form-row input, .form-row select { font-size: 16px; padding: 11px 12px; }
+    .btn { padding: 12px 18px; font-size: .95rem; }
+
+    /* Larger item cards */
+    .item-card { padding: 12px 14px; margin-bottom: 8px; }
+    .item-card .iname { font-size: 1rem; }
+
+    /* Bigger search input */
+    .search-wrap input { font-size: 16px; padding: 11px 12px 11px 36px; }
+    .sidebar-section { padding: 12px; }
+
+    /* Hide connection badge */
+    #connBadge { display: none !important; }
+
+    /* Bigger context menu touch targets */
+    .ctx-item { padding: 13px 16px; font-size: .95rem; }
+
+    /* Full-width popovers */
+    #roomPopover, #quickAddPopover { width: calc(100vw - 32px); left: 16px !important; }
+    .move-picker-box { width: calc(100vw - 32px); max-height: 70vh; }
+  }
+
+  .card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .card h3 {
+    font-size: .95rem;
+    font-weight: 800;
+    margin-bottom: 14px;
+    color: var(--text);
+  }
+
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .form-row label {
+    font-size: .75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  .form-row input, .form-row select {
+    padding: 9px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .9rem;
+    outline: none;
+    transition: border-color .15s;
+  }
+
+  .form-row input:focus, .form-row select:focus { border-color: var(--accent); }
+
+  .btn {
+    padding: 10px 18px;
+    border-radius: var(--radius);
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: .9rem;
+    transition: all .15s;
+  }
+
+  .btn-accent { background: var(--accent); color: #000; }
+  .btn-accent:hover { opacity: .85; }
+  .btn-danger { background: var(--accent3); color: #fff; }
+  .btn-danger:hover { opacity: .85; }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* tree / recursive location browser */
+  .tree-node {
+    margin: 2px 0;
+  }
+
+  .tree-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background .1s;
+    user-select: none;
+  }
+
+  .tree-header:hover { background: var(--surface2); }
+  .tree-header.selected { background: rgba(71,200,255,.12); }
+
+  .tree-toggle {
+    width: 18px; height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .7rem;
+    color: var(--muted);
+    transition: transform .15s;
+  }
+
+  .tree-toggle.open { transform: rotate(90deg); }
+  .tree-label { flex: 1; font-size: .88rem; }
+  .tree-count {
+    font-size: .7rem;
+    font-family: 'Space Mono', monospace;
+    color: var(--accent2);
+  }
+
+  .tree-children {
+    margin-left: 20px;
+    border-left: 1px solid var(--border);
+    padding-left: 8px;
+    display: none;
+  }
+
+  .tree-children.open { display: block; }
+
+  /* ── BREADCRUMB ── */
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .8rem;
+    color: var(--muted);
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .breadcrumb span {
+    cursor: pointer;
+    transition: color .1s;
+  }
+
+  .breadcrumb span:hover { color: var(--accent2); }
+  .breadcrumb .sep { color: var(--border); }
+
+  /* tooltip */
+  .tooltip {
+    position: fixed;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: .8rem;
+    pointer-events: none;
+    z-index: 999;
+    max-width: 200px;
+    display: none;
+  }
+
+  .tooltip h4 { font-size: .9rem; margin-bottom: 4px; }
+  .tooltip ul { padding-left: 14px; color: var(--muted); }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: var(--muted);
+    gap: 10px;
+    padding: 40px;
+    text-align: center;
+  }
+
+  .empty-state .big { font-size: 3rem; }
+  .empty-state p { font-size: .9rem; }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: .7rem;
+    font-family: 'Space Mono', monospace;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    margin: 2px;
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  .section-title {
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .inline-add {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .inline-add input {
+    flex: 1;
+    padding: 7px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .85rem;
+    outline: none;
+  }
+  .inline-add input:focus { border-color: var(--accent); }
+
+  .delete-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: .85rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color .1s;
+  }
+  .delete-btn:hover { color: var(--accent3); }
+
+  /* ── Context menu ── */
+  #ctxMenu {
+    position: fixed;
+    display: none;
+    z-index: 300;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px;
+    min-width: 170px;
+    box-shadow: 0 8px 32px #000c;
+  }
+  #ctxMenu.visible { display: block; }
+  .ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: .88rem;
+    transition: background .1s;
+    white-space: nowrap;
+  }
+  .ctx-item:hover { background: var(--surface2); }
+  .ctx-item.danger { color: var(--accent3); }
+  .ctx-item .ctx-icon { font-size: 1rem; width: 18px; text-align: center; }
+  .ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ── Move picker modal ── */
+  #movePicker {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: #0008;
+  }
+  #movePicker.visible { display: flex; }
+  .move-picker-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    width: 360px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 16px 48px #000c;
+  }
+  .move-picker-box h3 { font-size: 1rem; font-weight: 800; }
+  .move-picker-box .sub { font-size: .8rem; color: var(--muted); margin-top: -8px; }
+  .move-tree { flex: 1; overflow-y: auto; }
+  .move-tree::-webkit-scrollbar { width: 4px; }
+  .move-tree::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .move-node {
+    padding: 8px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: .88rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background .1s;
+  }
+  .move-node:hover { background: var(--surface2); }
+  .move-node.selected { background: rgba(232,255,71,.12); color: var(--accent); }
+  .move-node.disabled { opacity: .35; pointer-events: none; }
+  .move-node .indent { flex-shrink: 0; }
+  .move-node .move-path { font-size: .7rem; color: var(--muted); margin-left: auto; font-family: 'Space Mono', monospace; }
+  .move-picker-row { display: flex; gap: 8px; }
+
+  /* ── Room name popover ── */
+  #roomPopover {
+    position: fixed;
+    display: none;
+    z-index: 200;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 12px;
+    padding: 16px;
+    width: 260px;
+    box-shadow: 0 8px 32px #000a;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #roomPopover.visible { display: flex; }
+  #roomPopover h4 { font-size: .85rem; color: var(--muted); font-weight: 600; }
+  #roomPopover .pop-context {
+    font-size: .75rem;
+    color: var(--accent2);
+    font-family: 'Space Mono', monospace;
+    margin-top: -4px;
+  }
+  #roomPopover input {
+    padding: 9px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .95rem;
+    font-weight: 600;
+    outline: none;
+    width: 100%;
+    transition: border-color .15s;
+  }
+  #roomPopover input:focus { border-color: var(--accent); }
+  #roomPopover .pop-row { display: flex; gap: 8px; }
+
+  /* existing unplaced list inside popover */
+  #roomPopover .unplaced-list { display: flex; flex-direction: column; gap: 4px; }
+  #roomPopover .unplaced-item {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-size: .82rem;
+    cursor: pointer;
+    transition: all .12s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #roomPopover .unplaced-item:hover { border-color: var(--accent2); background: rgba(71,200,255,.08); }
+  #roomPopover .divider {
+    display: flex; align-items: center; gap: 8px;
+    font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+  }
+  #roomPopover .divider::before, #roomPopover .divider::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="font-size:1.4rem">📦</div>
+  <h1>Stock<span>Map</span></h1>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('search')">🔍 Items</button>
+    <button class="tab" onclick="switchTab('map')">🗺 Map</button>
+    <button class="tab" onclick="switchTab('manage')">⚙️ Manage</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- SIDEBAR: item list -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h3>Search Items</h3>
+      <div class="search-wrap">
+        <span class="icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="e.g. paper, stapler…" oninput="renderItemList()">
+      </div>
+    </div>
+    <!-- Location filter banner (shown when a map room is selected) -->
+    <div id="sidebarLocFilter" style="display:none;padding:8px 12px;background:rgba(71,200,255,.08);border-bottom:1px solid var(--border);gap:6px;align-items:center">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.7rem;color:var(--accent2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Showing</div>
+        <div id="sidebarLocName" style="font-size:.85rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        <div id="sidebarLocSub" style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace;margin-top:1px"></div>
+      </div>
+      <button onclick="quickAddItem(sidebarLocFilter)" title="Add item to this room"
+        style="background:var(--accent);border:none;color:#000;cursor:pointer;font-size:.75rem;font-weight:700;font-family:'DM Sans',sans-serif;padding:5px 10px;border-radius:6px;flex-shrink:0;white-space:nowrap">＋ Add</button>
+      <button onclick="clearLocationFilter()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:2px 6px;border-radius:4px;flex-shrink:0" title="Clear filter">✕</button>
+    </div>
+    <div class="item-list" id="itemList"></div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="content">
+
+    <!-- SEARCH/ITEM VIEW -->
+    <div class="view active" id="searchView">
+      <div class="item-detail" id="itemDetail">
+        <div class="empty-state">
+          <div class="big">📦</div>
+          <strong>Select an item</strong>
+          <p>Search and click any item on the left to see where it's stored.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAP VIEW -->
+    <div class="view" id="mapView">
+      <div class="map-toolbar">
+        <div id="mapBreadcrumb" class="breadcrumb" style="margin:0;flex:1"></div>
+        <button id="editMapBtn" onclick="toggleMapEdit()">✏️ Edit Map</button>
+        <button onclick="deleteSelectedRoom()" id="deleteRoomBtn" style="display:none">🗑 Delete Room</button>
+        <button id="snapBtn" onclick="toggleSnap()" title="Toggle grid snapping" style="display:none">⊞ Snap: On</button>
+      </div>
+      <p class="map-instructions" id="mapInstructions">Drag empty space to pan · Scroll or pinch to zoom · Click a room to inspect · Double-click to enter</p>
+      <div class="map-canvas-wrap">
+        <canvas id="mapCanvas"></canvas>
+        <div class="zoom-controls">
+          <button class="zoom-btn" onclick="zoomBy(1.25)" title="Zoom in">+</button>
+          <div class="zoom-label" id="zoomLabel">100%</div>
+          <button class="zoom-btn" onclick="zoomBy(0.8)" title="Zoom out">−</button>
+          <button class="zoom-btn" onclick="resetView()" title="Reset view" style="font-size:.7rem;margin-top:2px">⌂</button>
+        </div>
+      </div>
+      <!-- Room photos shown when inside a location -->
+      <div id="mapLocPhotos" style="overflow-y:auto;flex-shrink:0;max-height:160px"></div>
+    </div>
+
+    <!-- MANAGE VIEW -->
+    <div class="view" id="manageView">
+      <div class="manage-grid">
+
+        <div class="card">
+          <h3>➕ Add / Edit Item</h3>
+          <div class="form-row">
+            <label>Item Name</label>
+            <input type="text" id="mItemName" placeholder="e.g. A4 Paper">
+          </div>
+          <div class="form-row">
+            <label>Category</label>
+            <input type="text" id="mItemCat" placeholder="e.g. Office Supplies">
+          </div>
+          <div class="form-row">
+            <label>Emoji Icon</label>
+            <input type="text" id="mItemEmoji" placeholder="📄" maxlength="2">
+          </div>
+          <hr>
+          <p class="section-title">Stock Entries (location + qty)</p>
+          <div id="stockEntries"></div>
+          <button class="btn btn-outline" style="margin-top:8px;width:100%" onclick="addStockEntry()">+ Add Location Entry</button>
+          <hr>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-accent" style="flex:1" onclick="saveItem()">Save Item</button>
+            <button class="btn btn-outline" onclick="clearItemForm()">Clear</button>
+          </div>
+          <div id="editingLabel" style="font-size:.75rem;color:var(--muted);margin-top:8px;display:none"></div>
+        </div>
+
+        <div class="card">
+          <h3>🏢 Locations</h3>
+          <p class="section-title">Location Tree (drag to reorder not needed — just add hierarchy)</p>
+          <div id="locationTree"></div>
+          <hr>
+          <p class="section-title">Add Location</p>
+          <div class="form-row">
+            <label>Name</label>
+            <input type="text" id="newLocName" placeholder="e.g. Cellar, Shelf A">
+          </div>
+          <div class="form-row">
+            <label>Parent (optional)</label>
+            <select id="newLocParent"><option value="">— top level —</option></select>
+          </div>
+          <button class="btn btn-accent" style="width:100%;margin-top:4px" onclick="addLocation()">Add Location</button>
+        </div>
+
+      </div>
+
+      <!-- Danger zone -->
+      <div class="card" style="border-color:#ff6b6b33;margin-top:0">
+        <h3 style="color:var(--accent3)">⚠️ Danger Zone</h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:.88rem;font-weight:600">Clear all data</div>
+            <div style="font-size:.75rem;color:var(--muted);margin-top:2px">Permanently deletes all items, locations and map layouts.</div>
+          </div>
+          <button class="btn btn-danger" onclick="clearAllData()">🗑 Clear everything</button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- Context menu -->
+<div id="ctxMenu">
+  <div class="ctx-item" onclick="ctxAddItem()"><span class="ctx-icon">➕</span> Add item here</div>
+  <div class="ctx-item" onclick="ctxPhotos()"><span class="ctx-icon">📷</span> Photos…</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" onclick="ctxRename()"><span class="ctx-icon">✏️</span> Rename</div>
+  <div class="ctx-item" onclick="ctxMove()"><span class="ctx-icon">📦</span> Move to…</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" onclick="ctxDelete()"><span class="ctx-icon">🗑</span> Remove from map</div>
+</div>
+
+<!-- Move picker modal -->
+<div id="movePicker">
+  <div class="move-picker-box">
+    <h3>📦 Move <span id="movePickerName"></span></h3>
+    <div class="sub">Choose a new parent location</div>
+    <div class="move-tree" id="moveTree"></div>
+    <div class="move-picker-row">
+      <button class="btn btn-accent" style="flex:1" onclick="confirmMove()">Move here</button>
+      <button class="btn btn-outline" onclick="cancelMove()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick-add item popover -->
+<div id="quickAddPopover" style="
+  position:fixed;display:none;z-index:350;
+  background:var(--surface);border:1px solid var(--accent);border-radius:12px;
+  padding:16px;width:280px;box-shadow:0 8px 32px #000b;
+  flex-direction:column;gap:10px;
+">
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <h4 style="font-size:.9rem;font-weight:800">➕ Add item</h4>
+    <button onclick="closeQuickAdd()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem">✕</button>
+  </div>
+  <div id="quickAddLocLabel" style="font-size:.75rem;color:var(--accent2);font-family:'Space Mono',monospace;margin-top:-6px"></div>
+  <!-- Location selector shown when opened without a pre-selected location (mobile FAB) -->
+  <select id="quickAddLocSel" style="display:none;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.88rem;outline:none;width:100%">
+    <option value="">— select location —</option>
+  </select>
+
+  <!-- Search existing items -->
+  <div style="position:relative">
+    <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.85rem">🔍</span>
+    <input id="quickAddSearch" type="text" placeholder="Search existing items…" autocomplete="off"
+      oninput="renderQuickAddResults()"
+      style="width:100%;padding:8px 10px 8px 30px;background:var(--surface2);border:1px solid var(--border);
+             border-radius:7px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.85rem;outline:none">
+  </div>
+
+  <!-- Existing item results -->
+  <div id="quickAddResults" style="max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:3px"></div>
+
+  <!-- Divider -->
+  <div style="display:flex;align-items:center;gap:8px;font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em">
+    <div style="flex:1;height:1px;background:var(--border)"></div>or create new<div style="flex:1;height:1px;background:var(--border)"></div>
+  </div>
+
+  <!-- New item fields -->
+  <input id="quickAddName" type="text" placeholder="Item name…" autocomplete="off"
+    style="padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;
+           color:var(--text);font-family:'DM Sans',sans-serif;font-size:.88rem;outline:none;width:100%">
+  <div style="display:flex;gap:6px">
+    <input id="quickAddEmoji" type="text" placeholder="📦" maxlength="2"
+      style="width:52px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;
+             color:var(--text);font-family:'DM Sans',sans-serif;font-size:.88rem;outline:none;text-align:center">
+    <input id="quickAddQty" type="number" min="1" value="1"
+      style="width:68px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;
+             color:var(--text);font-family:'Space Mono',monospace;font-size:.88rem;outline:none">
+    <button class="btn btn-accent" style="flex:1;padding:8px" onclick="confirmQuickAdd()">Create</button>
+  </div>
+</div>
+
+<div id="roomPopover">
+  <h4>📍 Place room</h4>
+  <div class="pop-context" id="popContext"></div>
+  <!-- existing unplaced locations -->
+  <div id="popUnplacedWrap" style="display:none">
+    <div class="unplaced-list" id="popUnplaced"></div>
+    <div class="divider" id="popDivider">or create new</div>
+  </div>
+  <!-- new name input -->
+  <input type="text" id="popNameInput" placeholder="New room name…" autocomplete="off">
+  <div class="pop-row">
+    <button class="btn btn-accent" style="flex:1" onclick="confirmRoomPopover()">Create</button>
+    <button class="btn btn-outline" onclick="cancelRoomPopover()">Cancel</button>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ── Auth (injected by server on page load) ────────────────────────────────────
+/*__AUTH_ROLE__*/
+// If not injected (local file), default to admin
+if (!window.__authRole) { window.__authRole = 'admin'; window.__authUser = 'local'; }
+
+// Use server-injected base64 credentials for all fetch calls.
+// Browsers don't automatically forward Basic Auth to fetch() — we do it manually.
+const _authCreds = window.__authCreds || null;
+
+function authHeaders() {
+  if (!_authCreds) return {};
+  return { 'Authorization': 'Basic ' + _authCreds };
+}
+
+async function apiFetch(url, opts={}) {
+  const headers = { ...authHeaders(), ...(opts.headers||{}) };
+  return fetch(url, { ...opts, headers });
+}
+
+// ─── DATA MODEL ───────────────────────────────────────────────────────────────
+let state = {
+  locations: [],
+  items: [],
+  mapRooms: {}
+};
+
+// ── Storage backend: server API when available, localStorage fallback ─────────
+const API = '/api';
+let useServer   = false;
+let readOnly    = false;   // true when server was used but is now unreachable
+let serverEverConnected = false; // did we successfully load from server at startup?
+let saveDebounceTimer = null;
+
+// Snapshot of state at last successful load/save — used to compute patches
+let lastSavedState = null;
+
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+async function detectServer() {
+  if (!_authCreds) { useServer = false; updateConnectionBadge(); return; }
+  try {
+    const r = await apiFetch(API + '/ping', { signal: AbortSignal.timeout(3000) });
+    useServer = r.ok;
+  } catch { useServer = false; }
+  if (serverEverConnected && !useServer) setReadOnly(true);
+  else if (useServer) setReadOnly(false);
+  updateConnectionBadge();
+}
+
+function setReadOnly(on) {
+  if (readOnly === on) return;
+  readOnly = on;
+
+  // Show / hide the read-only banner
+  let banner = document.getElementById('readOnlyBanner');
+  if (on) {
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'readOnlyBanner';
+      banner.style.cssText = `
+        position:fixed;top:0;left:0;right:0;z-index:9999;
+        background:#ff6b6b;color:#000;
+        padding:8px 16px;font-size:.82rem;font-weight:700;
+        font-family:'Space Mono',monospace;text-align:center;
+        display:flex;align-items:center;justify-content:center;gap:10px;`;
+      banner.innerHTML = `<span>⚠️ Server unreachable — read-only mode. Edits are disabled until connection is restored.</span>`;
+      document.body.prepend(banner);
+    }
+    banner.style.display = 'flex';
+    // Push body content down so banner doesn't cover header
+    document.body.style.paddingTop = '36px';
+  } else {
+    if (banner) { banner.style.display = 'none'; }
+    document.body.style.paddingTop = '';
+  }
+}
+
+// Gate function — call before any write operation
+function guardEdit(action) {
+  if (readOnly) {
+    showToast('⚠️ Read-only — server is unreachable');
+    return false;
+  }
+  return true;
+}
+
+function updateConnectionBadge() {
+  let badge = document.getElementById('connBadge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'connBadge';
+    badge.style.cssText = `
+      position:fixed;bottom:14px;left:14px;z-index:9998;
+      padding:4px 10px;border-radius:20px;font-size:.7rem;font-family:'Space Mono',monospace;
+      border:1px solid;pointer-events:none;transition:opacity .3s;`;
+    document.body.appendChild(badge);
+  }
+  if (useServer) {
+    badge.textContent = '● server';
+    badge.style.color = '#7bffb4'; badge.style.borderColor = '#7bffb4';
+    badge.style.background = 'rgba(123,255,180,.08)';
+  } else if (serverEverConnected) {
+    badge.textContent = '● offline';
+    badge.style.color = '#ff6b6b'; badge.style.borderColor = '#ff6b6b';
+    badge.style.background = 'rgba(255,107,107,.08)';
+  } else {
+    badge.textContent = '● local only';
+    badge.style.color = '#ff9f47'; badge.style.borderColor = '#ff9f47';
+    badge.style.background = 'rgba(255,159,71,.08)';
+  }
+}
+
+async function loadState() {
+  // Skip network entirely if no credentials injected (local file mode)
+  if (_authCreds) {
+    try {
+      const r = await apiFetch(API + '/state', { signal: AbortSignal.timeout(8000) });
+      if (r.ok) {
+        const data = await r.json();
+        state = data;
+        if (!state.mapRooms)  state.mapRooms  = {};
+        if (!state.locations) state.locations = [];
+        if (!state.items)     state.items     = [];
+        lastSavedState = deepClone(state);
+        useServer = true;
+        serverEverConnected = true;
+        setReadOnly(false);
+        updateConnectionBadge();
+        console.log(`[StockMap] Loaded from server: ${state.locations.length} locations, ${state.items.length} items`);
+        return;
+      } else {
+        console.warn('[StockMap] /state returned', r.status);
+        useServer = false;
+      }
+    } catch (e) {
+      console.warn('[StockMap] Server unreachable:', e.message);
+      useServer = false;
+      if (serverEverConnected) setReadOnly(true);
+    }
+  }
+
+  // Fallback: localStorage
+  updateConnectionBadge();
+  try {
+    const raw = localStorage.getItem('stockmap_v2');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      state = parsed;
+      if (!state.mapRooms)  state.mapRooms  = {};
+      if (!state.locations) state.locations = [];
+      if (!state.items)     state.items     = [];
+      console.log(`[StockMap] Loaded from localStorage: ${state.locations.length} locations, ${state.items.length} items`);
+    }
+  } catch(e) { console.warn('[StockMap] localStorage failed:', e); }
+  lastSavedState = deepClone(state);
+}
+
+// Build a minimal patch from what changed since last save
+function buildPatch() {
+  const prev = lastSavedState || { locations: [], items: [], mapRooms: {} };
+  const patch = {};
+
+  // ── items ──
+  const prevItemIds  = new Set(prev.items.map(x => x.id));
+  const curItemIds   = new Set(state.items.map(x => x.id));
+  const setItems     = state.items.filter(item => {
+    const old = prev.items.find(x => x.id === item.id);
+    return !old || JSON.stringify(old) !== JSON.stringify(item);
+  });
+  const delItems     = [...prevItemIds].filter(id => !curItemIds.has(id));
+  if (setItems.length || delItems.length)
+    patch.items = { set: setItems, delete: delItems };
+
+  // ── locations ──
+  const prevLocIds   = new Set(prev.locations.map(x => x.id));
+  const curLocIds    = new Set(state.locations.map(x => x.id));
+  const setLocs      = state.locations.filter(loc => {
+    const old = prev.locations.find(x => x.id === loc.id);
+    return !old || JSON.stringify(old) !== JSON.stringify(loc);
+  });
+  const delLocs      = [...prevLocIds].filter(id => !curLocIds.has(id));
+  if (setLocs.length || delLocs.length)
+    patch.locations = { set: setLocs, delete: delLocs };
+
+  // ── mapRooms ──
+  const setRooms = {}, delRooms = {};
+  const allParentKeys = new Set([
+    ...Object.keys(prev.mapRooms),
+    ...Object.keys(state.mapRooms)
+  ]);
+  allParentKeys.forEach(pk => {
+    const prevLevel = prev.mapRooms[pk] || {};
+    const curLevel  = state.mapRooms[pk] || {};
+    // rooms added or changed
+    Object.entries(curLevel).forEach(([locId, room]) => {
+      const old = prevLevel[locId];
+      if (!old || JSON.stringify(old) !== JSON.stringify(room)) {
+        if (!setRooms[pk]) setRooms[pk] = {};
+        setRooms[pk][locId] = room;
+      }
+    });
+    // rooms deleted
+    Object.keys(prevLevel).forEach(locId => {
+      if (!curLevel[locId]) {
+        if (!delRooms[pk]) delRooms[pk] = [];
+        delRooms[pk].push(locId);
+      }
+    });
+  });
+  if (Object.keys(setRooms).length || Object.keys(delRooms).length)
+    patch.mapRooms = { set: setRooms, delete: delRooms };
+
+  return patch;
+}
+
+function saveState() {
+  if (readOnly) { showToast('⚠️ Read-only — server is unreachable'); return; }
+  clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(_doSave, 400);
+}
+
+async function _doSave() {
+  if (useServer) {
+    const patch = buildPatch();
+    // Nothing actually changed
+    if (!patch.items && !patch.locations && !patch.mapRooms) return;
+    try {
+      const r = await apiFetch(API + '/patch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch)
+      });
+      if (!r.ok) throw new Error(await r.text());
+      lastSavedState = deepClone(state); // update baseline
+      return;
+    } catch (e) {
+      console.warn('Patch save failed, falling back to localStorage:', e);
+      useServer = false;
+      updateConnectionBadge();
+    }
+  }
+  localStorage.setItem('stockmap_v2', JSON.stringify(state));
+  lastSavedState = deepClone(state);
+}
+
+// Poll for server reconnection every 5s
+setInterval(async () => {
+  const wasReadOnly = readOnly;
+  await detectServer(); // this calls setReadOnly internally
+  if (wasReadOnly && !readOnly) {
+    // Just reconnected — pull fresh state from server
+    try {
+      const r = await apiFetch(API + '/state');
+      if (r.ok) {
+        const data = await r.json();
+        state = data;
+        if (!state.mapRooms)  state.mapRooms  = {};
+        if (!state.locations) state.locations = [];
+        if (!state.items)     state.items     = [];
+        lastSavedState = deepClone(state);
+        renderItemList();
+        renderManage();
+        if (currentTab === 'map') renderMap();
+        showToast('✅ Reconnected — data refreshed');
+      }
+    } catch(e) { console.warn('Reconnect pull failed:', e); }
+  }
+}, 5000);
+
+function uid() { return Math.random().toString(36).slice(2,9); }
+
+function seedData() {
+  // Fresh start — no demo data
+  state.locations = [];
+  state.items     = [];
+  state.mapRooms  = {};
+  // Do NOT call saveState here — we don't want to wipe server data
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function getLocation(id) { return state.locations.find(l=>l.id===id); }
+function getChildren(id) { return state.locations.filter(l=>l.parentId===id); }
+function getTopLevel() { return state.locations.filter(l=>!l.parentId); }
+
+function getLocationPath(id) {
+  const parts = [];
+  let cur = id;
+  while (cur) {
+    const loc = getLocation(cur);
+    if (!loc) break;
+    parts.unshift(loc.name);
+    cur = loc.parentId;
+  }
+  return parts.join(' › ');
+}
+
+function getAncestors(id) {
+  const ancs = [];
+  let cur = id;
+  while (cur) {
+    const loc = getLocation(cur);
+    if (!loc) break;
+    ancs.unshift(loc);
+    cur = loc.parentId;
+  }
+  return ancs;
+}
+
+function getDescendants(id) {
+  const result = [];
+  const queue = [id];
+  while (queue.length) {
+    const cur = queue.shift();
+    const children = getChildren(cur);
+    children.forEach(c => { result.push(c.id); queue.push(c.id); });
+  }
+  return result;
+}
+
+function getAllItemsInLocation(locId) {
+  // includes descendants
+  const locs = [locId, ...getDescendants(locId)];
+  const results = [];
+  state.items.forEach(item => {
+    item.stock.forEach(s => {
+      if (locs.includes(s.locationId)) {
+        results.push({item, entry: s, locationId: s.locationId});
+      }
+    });
+  });
+  return results;
+}
+
+function getTotalQty(item) {
+  return item.stock.reduce((s,e)=>s+e.qty, 0);
+}
+
+// ─── TABS ──────────────────────────────────────────────────────────────────
+let currentTab = 'search';
+
+function isMobile() { return window.innerWidth <= 768; }
+
+function switchTab(tab) {
+  currentTab = tab;
+  // Desktop tabs
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    t.classList.toggle('active', ['search','map','manage'][i]===tab);
+  });
+  // Mobile nav
+  ['search','map','manage'].forEach(t => {
+    const btn = document.getElementById('mnav-'+t);
+    if (btn) btn.classList.toggle('active', t===tab);
+  });
+  // Views
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(tab+'View').classList.add('active');
+
+  // Sidebar visibility on mobile
+  const sidebar = document.querySelector('.sidebar');
+  if (isMobile()) {
+    sidebar.classList.toggle('mobile-visible', tab==='search');
+    // FAB: show on items tab
+    const fab = document.getElementById('mobileFab');
+    if (fab) fab.classList.toggle('visible', tab==='search');
+  }
+
+  if (tab==='map') renderMap();
+  if (tab==='manage') renderManage();
+}
+
+function mobileSwitchTab(tab) { switchTab(tab); }
+
+// ─── ITEM LIST ────────────────────────────────────────────────────────────────
+let selectedItemId = null;
+let sidebarLocFilter = null; // locId whose items to show (includes descendants)
+
+function setLocationFilter(locId) {
+  sidebarLocFilter = locId;
+  const banner = document.getElementById('sidebarLocFilter');
+  if (!locId) {
+    banner.style.display = 'none';
+  } else {
+    const loc = getLocation(locId);
+    const items = getAllItemsInLocation(locId);
+    // Count unique item types
+    const uniqueItems = [...new Set(items.map(e => e.item.id))].length;
+    const childCount = getDescendants(locId).length;
+    banner.style.display = 'flex';
+    document.getElementById('sidebarLocName').textContent = loc?.name || '';
+    document.getElementById('sidebarLocSub').textContent =
+      `${uniqueItems} item type${uniqueItems!==1?'s':''}`
+      + (childCount ? ` · incl. ${childCount} sub-location${childCount!==1?'s':''}` : '');
+  }
+  renderItemList();
+}
+
+function clearLocationFilter() {
+  sidebarLocFilter = null;
+  mapSelectedLocId = null;
+  document.getElementById('sidebarLocFilter').style.display = 'none';
+  drawMap();
+  renderItemList();
+}
+
+function renderItemList() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const list = document.getElementById('itemList');
+
+  let filtered;
+  if (sidebarLocFilter) {
+    // Show only items in this location (and sub-locations), grouped by exact sub-location
+    const entries = getAllItemsInLocation(sidebarLocFilter);
+    // Collapse to unique items, summing qty across sub-locations
+    const itemMap = new Map();
+    entries.forEach(({item, entry, locationId}) => {
+      if (!itemMap.has(item.id)) itemMap.set(item.id, {item, total: 0, locs: []});
+      const rec = itemMap.get(item.id);
+      rec.total += entry.qty;
+      rec.locs.push({locationId, qty: entry.qty});
+    });
+    filtered = [...itemMap.values()];
+
+    if (!filtered.length) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">Nothing stored here</div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(({item, total, locs}) => {
+      const subLines = locs.length > 1
+        ? locs.map(l => `<div style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace;margin-top:1px">
+            ${getLocationPath(l.locationId)}: ${l.qty}
+          </div>`).join('')
+        : `<div class="imeta">${getLocationPath(locs[0].locationId)}</div>`;
+      return `<div class="item-card ${selectedItemId===item.id?'selected':''}" onclick="selectItem('${item.id}')">
+        <span class="qty-badge">${total}</span>
+        <div class="iname">${item.emoji||'📦'} ${item.name}</div>
+        ${subLines}
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  // Normal full list with search
+  filtered = state.items.filter(i =>
+    i.name.toLowerCase().includes(q) ||
+    (i.category||'').toLowerCase().includes(q)
+  );
+  if (!filtered.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">No items found</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(item => `
+    <div class="item-card ${selectedItemId===item.id?'selected':''}" onclick="selectItem('${item.id}')">
+      <span class="qty-badge">${getTotalQty(item)}</span>
+      <div class="iname">${item.emoji||'📦'} ${item.name}</div>
+      <div class="imeta">${item.category||'Uncategorized'}</div>
+    </div>
+  `).join('');
+}
+
+function selectItem(id) {
+  selectedItemId = id;
+  renderItemList();
+  renderItemDetail(id);
+  if (currentTab !== 'search') switchTab('search');
+  // On mobile the detail is below the sidebar — scroll it into view
+  if (isMobile()) {
+    setTimeout(() => {
+      const detail = document.getElementById('itemDetail');
+      detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  }
+}
+
+function renderItemDetail(id) {
+  const item = state.items.find(i=>i.id===id);
+  if (!item) return;
+  const detail = document.getElementById('itemDetail');
+
+  // group by location
+  const entries = item.stock.map(s => ({
+    ...s,
+    path: getLocationPath(s.locationId),
+    loc: getLocation(s.locationId)
+  })).filter(e=>e.loc);
+
+  const total = getTotalQty(item);
+
+  detail.innerHTML = `
+    <div class="breadcrumb">
+      <span style="color:var(--accent)">Items</span>
+      <span class="sep">›</span>
+      <span>${item.category||'Uncategorized'}</span>
+      <span class="sep">›</span>
+      <span style="color:var(--text)">${item.name}</span>
+    </div>
+    <div class="detail-header">
+      <div class="detail-icon">${item.emoji||'📦'}</div>
+      <div>
+        <div class="detail-title">${item.name}</div>
+        <div class="detail-total">Total in stock: <strong style="color:var(--accent)">${total} units</strong></div>
+        ${item.category?`<span class="tag">${item.category}</span>`:''}
+      </div>
+      <button class="btn btn-outline" style="margin-left:auto" onclick="editItem('${item.id}')">✏️ Edit</button>
+    </div>
+
+    <p class="section-title">Photos</p>
+    ${photoStripPlaceholder('items', item.id)}
+
+    <p class="section-title" style="margin-top:16px">Storage Locations (${entries.length})</p>
+    ${entries.length ? `
+      <div class="locations-grid">
+        ${entries.map(e=>`
+          <div class="loc-card" onclick="showLocationOnMap('${e.locationId}')">
+            <div class="loc-path">${e.path}</div>
+            <div class="loc-qty">${e.qty}</div>
+            <div class="loc-label">unit${e.qty!==1?'s':''} here</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : '<p style="color:var(--muted);font-size:.85rem">No stock entries.</p>'}
+  `;
+}
+
+function showLocationOnMap(locId) {
+  // Build the ancestor stack and navigate into it
+  const ancs = getAncestors(locId);
+  mapStack = ancs.map(a => a.id);
+  // Pop the last one — we want to be at the parent level so the target is visible
+  if (mapStack.length) mapStack.pop();
+  switchTab('map');
+  setTimeout(() => { renderMap(); }, 50);
+}
+
+// ─── DRILL-DOWN MAP ───────────────────────────────────────────────────────────
+// mapRooms structure: { [parentLocId_or_'root']: { [childLocId]: {x,y,w,h,color,label} } }
+// 'root' level shows top-level locations
+
+const COLORS = ['#47c8ff','#e8ff47','#ff6b6b','#7bffb4','#ff9f47','#c47bff','#ff6bca','#ffeb47'];
+let mapStack = []; // stack of locId strings; empty = root level
+let mapEditMode = false;
+let currentDraw = null;
+let mapHoverLocId = null;
+let selectedRoomId = null; // for delete
+
+function currentMapParent() {
+  return mapStack.length ? mapStack[mapStack.length-1] : '__root__';
+}
+
+function getRoomsAtLevel(parentKey) {
+  if (!state.mapRooms[parentKey]) state.mapRooms[parentKey] = {};
+  return state.mapRooms[parentKey];
+}
+
+function renderMap() {
+  resizeCanvas();
+  drawMap();
+  renderMapBreadcrumb();
+}
+
+function resizeCanvas() {
+  const canvas = document.getElementById('mapCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const r = canvas.getBoundingClientRect();
+  const cssW = Math.round(r.width);
+  const cssH = Math.round(r.height);
+  if (cssW < 10 || cssH < 10) return; // not laid out yet
+  canvas._dpr  = dpr;
+  canvas._cssW = cssW;
+  canvas._cssH = cssH;
+  const pw = Math.round(cssW * dpr);
+  const ph = Math.round(cssH * dpr);
+  if (canvas.width !== pw || canvas.height !== ph) {
+    canvas.width  = pw;
+    canvas.height = ph;
+  }
+}
+
+// ── Viewport: pan + zoom ──────────────────────────────────────────────────────
+let vp = { x: 0, y: 0, scale: 1 }; // pan offset in CSS px, scale
+
+function resetView() {
+  vp = { x: 0, y: 0, scale: 1 };
+  updateZoomLabel();
+  drawMap();
+}
+
+function zoomBy(factor, cx, cy) {
+  const canvas = document.getElementById('mapCanvas');
+  // Default zoom centre = canvas centre
+  if (cx === undefined) { cx = (canvas._cssW||600)/2; cy = (canvas._cssH||400)/2; }
+  const newScale = Math.min(8, Math.max(0.15, vp.scale * factor));
+  // Zoom toward cursor: adjust pan so the world point under cursor stays fixed
+  vp.x = cx - (cx - vp.x) * (newScale / vp.scale);
+  vp.y = cy - (cy - vp.y) * (newScale / vp.scale);
+  vp.scale = newScale;
+  updateZoomLabel();
+  drawMap();
+}
+
+function updateZoomLabel() {
+  const el = document.getElementById('zoomLabel');
+  if (el) el.textContent = Math.round(vp.scale * 100) + '%';
+}
+
+// Convert mouse CSS-px → world coords
+function toWorld(x, y) {
+  return { x: (x - vp.x) / vp.scale, y: (y - vp.y) / vp.scale };
+}
+// Convert world → CSS-px
+function toScreen(x, y) {
+  return { x: x * vp.scale + vp.x, y: y * vp.scale + vp.y };
+}
+
+function drawMap() {
+  const canvas = document.getElementById('mapCanvas');
+  const dpr = canvas._dpr || window.devicePixelRatio || 1;
+  const CW  = canvas._cssW || canvas.width/dpr;
+  const CH  = canvas._cssH || canvas.height/dpr;
+  const ctx = canvas.getContext('2d');
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // All drawing in CSS-px space (dpr handled by scale)
+  ctx.save();
+  ctx.scale(dpr, dpr);
+
+  // ── Pass 1: world-space (grid + room shapes + handles) ──
+  ctx.save();
+  ctx.translate(vp.x, vp.y);
+  ctx.scale(vp.scale, vp.scale);
+
+  // Grid — uses GRID constant so it matches snap resolution
+  const topLeft  = toWorld(0, 0);
+  const botRight = toWorld(CW, CH);
+  ctx.lineWidth = 1/vp.scale;
+  const gx0=Math.floor(topLeft.x/GRID)*GRID, gy0=Math.floor(topLeft.y/GRID)*GRID;
+  for (let gx=gx0; gx<botRight.x+GRID; gx+=GRID) {
+    const major = gx % (GRID*4) === 0;
+    ctx.strokeStyle = mapEditMode
+      ? (major ? '#2e2e42' : '#1e1e2c')
+      : (major ? '#1e1e2a' : '#191924');
+    ctx.beginPath(); ctx.moveTo(gx,topLeft.y); ctx.lineTo(gx,botRight.y); ctx.stroke();
+  }
+  for (let gy=gy0; gy<botRight.y+GRID; gy+=GRID) {
+    const major = gy % (GRID*4) === 0;
+    ctx.strokeStyle = mapEditMode
+      ? (major ? '#2e2e42' : '#1e1e2c')
+      : (major ? '#1e1e2a' : '#191924');
+    ctx.beginPath(); ctx.moveTo(topLeft.x,gy); ctx.lineTo(botRight.x,gy); ctx.stroke();
+  }
+
+  const parentKey = currentMapParent();
+  const rooms = getRoomsAtLevel(parentKey);
+  const validChildren = parentKey==='__root__' ? getTopLevel() : getChildren(parentKey);
+
+  Object.entries(rooms).forEach(([locId, room]) => {
+    const loc = getLocation(locId); if (!loc) return;
+    const isHovered   = mapHoverLocId===locId;
+    const isSelected  = selectedRoomId===locId;
+    const isInspected = mapSelectedLocId===locId;
+    const isDragging  = dragState?.mode==='move' && dragState.locId===locId;
+    const color = room.color||'#47c8ff';
+
+    ctx.save();
+    ctx.fillStyle   = (isDragging||isInspected) ? color+'55' : ((isHovered||isSelected) ? color+'44' : color+'1e');
+    ctx.strokeStyle = isDragging ? '#fff' : (isInspected ? color : (isSelected ? '#fff' : (isHovered ? color : color+'99')));
+    ctx.lineWidth   = ((isDragging||isInspected||isSelected) ? 2.5 : (isHovered ? 2 : 1.5)) / vp.scale;
+    roundRect(ctx, room.x, room.y, room.w, room.h, 8/vp.scale);
+    ctx.fill(); ctx.stroke();
+
+    // Resize handles — only on selected room, always show corners, edges when hovered too
+    if (mapEditMode && (isSelected || isHovered || isDragging)) {
+      const onTouch = ('ontouchstart' in window);
+      const HS = (onTouch ? 9 : 6) / vp.scale;
+      getResizeHandles(room).forEach(h => {
+        const active = dragState?.mode==='resize' && dragState.handle===h.dir;
+        const isCorner = h.dir.length === 2;
+        // On touch: always show all 8 handles on selected room; on desktop show on hover too
+        if (!isCorner && !isSelected && !isDragging) return;
+        ctx.fillStyle = active ? '#fff' : (isSelected ? color : color+'99');
+        ctx.strokeStyle = '#00000066';
+        ctx.lineWidth = 1/vp.scale;
+        ctx.fillRect(h.x-HS, h.y-HS, HS*2, HS*2);
+        ctx.strokeRect(h.x-HS, h.y-HS, HS*2, HS*2);
+      });
+    }
+    ctx.restore();
+  });
+
+  // Drawing preview
+  if (currentDraw && mapEditMode) {
+    ctx.save();
+    ctx.strokeStyle='#e8ff47'; ctx.lineWidth=2/vp.scale;
+    ctx.setLineDash([6/vp.scale,4/vp.scale]);
+    ctx.strokeRect(currentDraw.x,currentDraw.y,currentDraw.w,currentDraw.h);
+    ctx.restore();
+  }
+
+  ctx.restore(); // exit world-space
+
+  // ── Pass 2: screen-space text (always crisp, never scaled) ──
+  Object.entries(rooms).forEach(([locId, room]) => {
+    const loc = getLocation(locId); if (!loc) return;
+    const isHovered   = mapHoverLocId===locId;
+    const isSelected  = selectedRoomId===locId;
+    const isInspected = mapSelectedLocId===locId;
+    const isDragging  = dragState?.mode==='move' && dragState.locId===locId;
+    const color = room.color||'#47c8ff';
+    const hasChildren = getChildren(locId).length>0 ||
+      Object.keys(getRoomsAtLevel(locId)).length>0;
+
+    // Room in screen coords
+    const sx=room.x*vp.scale+vp.x, sy=room.y*vp.scale+vp.y;
+    const sw=room.w*vp.scale,       sh=room.h*vp.scale;
+    if (sw<32||sh<22) return; // too small to label
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(sx+1,sy+1,sw-2,sh-2); ctx.clip();
+
+    if (sh>22) {
+      ctx.fillStyle = (isHovered||isSelected||isInspected) ? color : color+'cc';
+      ctx.font = `bold 13px DM Sans, sans-serif`;
+      ctx.fillText(loc.name, sx+10, sy+20);
+    }
+
+    if (sw>90 && sh>42) {
+      const itemsHere=getAllItemsInLocation(locId);
+      const childCount=getChildren(locId).length;
+      const parts=[
+        childCount ? `${childCount} sub-loc${childCount>1?'s':''}` : '',
+        itemsHere.length ? `${itemsHere.length} item${itemsHere.length>1?'s':''}` : ''
+      ].filter(Boolean);
+      if (parts.length) {
+        ctx.font='10px Space Mono, monospace';
+        ctx.fillStyle='#ffffff55';
+        ctx.fillText(parts.join(' · '), sx+10, sy+36);
+      }
+    }
+
+    if ((hasChildren) && sw>70 && sh>52) {
+      ctx.font='10px DM Sans, sans-serif';
+      ctx.fillStyle = isInspected ? color : color+'88';
+      ctx.textAlign='right';
+      ctx.fillText(isInspected?'↵ dbl-click to enter':'↵ enter', sx+sw-8, sy+sh-8);
+      ctx.textAlign='left';
+    }
+
+    ctx.restore();
+  });
+
+  // Unplaced notice
+  const placedIds=Object.keys(rooms);
+  const unplaced=validChildren.filter(c=>!placedIds.includes(c.id));
+  if (unplaced.length && mapEditMode) {
+    ctx.save();
+    ctx.fillStyle='#ffffff33'; ctx.font='11px Space Mono, monospace';
+    ctx.fillText(`Unplaced: ${unplaced.map(u=>u.name).join(', ')} — draw a rectangle`, 10, CH-10);
+    ctx.restore();
+  }
+
+  ctx.restore(); // dpr scale
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+function renderMapBreadcrumb() {
+  const el = document.getElementById('mapBreadcrumb');
+  const parts = [{id: '__root__', name: '🏠 Overview'}];
+  mapStack.forEach(id => {
+    const loc = getLocation(id);
+    if (loc) parts.push({id, name: loc.name});
+  });
+  el.innerHTML = parts.map((p, i) => {
+    const isLast = i === parts.length - 1;
+    return `<span ${!isLast ? `onclick="mapGoTo(${i})" style="cursor:pointer"` : ''} style="color:${isLast?'var(--text)':'var(--accent2)'}">${p.name}</span>
+      ${!isLast ? '<span class="sep">›</span>' : ''}`;
+  }).join('');
+}
+
+function mapGoTo(stackIndex) {
+  if (stackIndex === 0) mapStack = [];
+  else mapStack = mapStack.slice(0, stackIndex);
+  selectedRoomId = null;
+  mapSelectedLocId = null;
+  clearLocationFilter();
+  vp = {x:0,y:0,scale:1}; updateZoomLabel();
+  // Clear or show room photos for current level
+  const locId = mapStack.length ? mapStack[mapStack.length-1] : null;
+  if (locId) renderMapLocationPhotos(locId);
+  else { const el=document.getElementById('mapLocPhotos'); if(el) el.innerHTML=''; }
+  renderMap();
+}
+
+function mapEnter(locId) {
+  mapStack.push(locId);
+  selectedRoomId = null;
+  mapSelectedLocId = null;
+  mapEditMode = false;
+  document.getElementById('editMapBtn').textContent = '✏️ Edit Map';
+  clearLocationFilter();
+  vp = {x:0,y:0,scale:1}; updateZoomLabel();
+  renderMap();
+  updateMapUI();
+  // Show room photos
+  renderMapLocationPhotos(locId);
+}
+
+function toggleMapEdit() {
+  if (mapEditMode === false && !guardEdit()) return; // block entering edit mode
+  mapEditMode = !mapEditMode;
+  document.getElementById('editMapBtn').textContent = mapEditMode ? '✅ Done' : '✏️ Edit Map';
+  document.getElementById('snapBtn').style.display = mapEditMode ? '' : 'none';
+  document.getElementById('mapCanvas').style.cursor = mapEditMode ? 'crosshair' : 'pointer';
+  document.getElementById('mapInstructions').innerHTML = mapEditMode
+    ? 'Drag to draw a rectangle and place a sub-location. Click a placed room to select it.'
+    : 'Click a room to <strong>enter</strong> it and see its map. Double-click to enter.';
+  drawMap();
+}
+
+function deleteSelectedRoom() {
+  if (!selectedRoomId) return;
+  const loc = getLocation(selectedRoomId);
+  if (!confirm(`Remove "${loc?.name}" from this map level? (Does not delete the location itself)`)) return;
+  const parentKey = currentMapParent();
+  delete state.mapRooms[parentKey][selectedRoomId];
+  selectedRoomId = null;
+  saveState();
+  drawMap();
+  document.getElementById('deleteRoomBtn').style.display = 'none';
+}
+
+function updateMapUI() {
+  document.getElementById('mapInstructions').innerHTML = mapEditMode
+    ? 'Drag to draw a rectangle and place a sub-location.'
+    : 'Click a room to enter it. Double-click also works.';
+}
+
+function renderMapItemPanel() {
+  const el = document.getElementById('mapItemPanel');
+  const parentKey = currentMapParent();
+  if (parentKey === '__root__') { el.innerHTML = ''; return; }
+
+  const loc = getLocation(parentKey);
+  const ownItems = state.items.flatMap(item =>
+    item.stock.filter(s => s.locationId === parentKey).map(s => ({item, qty: s.qty}))
+  );
+
+  if (!ownItems.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `
+    <div style="margin-top:16px">
+      <p class="section-title">Items stored directly in ${loc?.name}</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${ownItems.map(({item,qty}) => `
+          <div class="item-card" style="width:180px;cursor:pointer" onclick="selectItem('${item.id}')">
+            <span class="qty-badge">${qty}</span>
+            <div class="iname">${item.emoji||'📦'} ${item.name}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+// ── Canvas interaction ───────────────────────────────────────────────────────
+const canvas = document.getElementById('mapCanvas');
+
+function canvasXY(e) {
+  // Returns mouse position in CSS pixels relative to canvas top-left.
+  // canvas.getBoundingClientRect() matches _cssW/_cssH so no scaling needed.
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function hitTestRoom(sx, sy) {
+  const {x,y} = toWorld(sx, sy);
+  const rooms = getRoomsAtLevel(currentMapParent());
+  for (const [locId, room] of Object.entries(rooms).reverse()) {
+    if (x>=room.x && x<=room.x+room.w && y>=room.y && y<=room.y+room.h) return locId;
+  }
+  return null;
+}
+
+function normalizeRect(x1,y1,x2,y2) {
+  return {x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1),h:Math.abs(y2-y1)};
+}
+
+function getResizeHandles(room) {
+  const {x,y,w,h} = room;
+  const cx=x+w/2, cy=y+h/2;
+  return [
+    {dir:'nw',x,y},      {dir:'n',x:cx,y},     {dir:'ne',x:x+w,y},
+    {dir:'w',x,y:cy},                            {dir:'e',x:x+w,y:cy},
+    {dir:'sw',x,y:y+h},  {dir:'s',x:cx,y:y+h}, {dir:'se',x:x+w,y:y+h},
+  ];
+}
+
+const HANDLE_HIT = 10;
+const HANDLE_HIT_TOUCH = 22; // bigger target for fingers
+
+function hitTestHandle(sx, sy, room, forTouch=false) {
+  const threshold = forTouch ? HANDLE_HIT_TOUCH : HANDLE_HIT;
+  for (const h of getResizeHandles(room)) {
+    const hs = toScreen(h.x, h.y);
+    if (Math.abs(sx-hs.x)<=threshold && Math.abs(sy-hs.y)<=threshold) return h.dir;
+  }
+  return null;
+}
+
+// Check handles on ALL rooms in edit mode (not just selected/hovered)
+function hitTestAnyHandle(sx, sy, forTouch=false) {
+  const rooms = getRoomsAtLevel(currentMapParent());
+  for (const [locId, room] of Object.entries(rooms)) {
+    const dir = hitTestHandle(sx, sy, room, forTouch);
+    if (dir) return { locId, dir };
+  }
+  return null;
+}
+
+const RESIZE_CURSORS = {
+  nw:'nw-resize',n:'n-resize',ne:'ne-resize',
+  w:'w-resize',               e:'e-resize',
+  sw:'sw-resize',s:'s-resize',se:'se-resize',
+};
+
+let dragState = null;
+let mapSelectedLocId = null;
+
+// ── Grid snapping ─────────────────────────────────────────────────────────────
+const GRID = 20; // snap resolution in world px (half a grid cell for finer control)
+let snapEnabled = true;
+
+function snap(v) {
+  return snapEnabled ? Math.round(v / GRID) * GRID : v;
+}
+function snapRect(x, y, w, h) {
+  const x2 = snap(x + w);
+  const y2 = snap(y + h);
+  return { x: snap(x), y: snap(y), w: x2 - snap(x), h: y2 - snap(y) };
+}
+
+function toggleSnap() {
+  snapEnabled = !snapEnabled;
+  document.getElementById('snapBtn').textContent = `⊞ Snap: ${snapEnabled ? 'On' : 'Off'}`;
+  document.getElementById('snapBtn').style.opacity = snapEnabled ? '1' : '0.5';
+}
+
+// ── Wheel: zoom (also handles trackpad pinch which browsers send as wheel+ctrlKey)
+// and two-finger trackpad pan (sent as wheel without ctrlKey)
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const {x,y} = canvasXY(e);
+  if (e.ctrlKey || e.metaKey) {
+    // Pinch-to-zoom (trackpad) or Ctrl+scroll
+    zoomBy(e.deltaY < 0 ? 1.08 : 1/1.08, x, y);
+  } else {
+    // Two-finger scroll pan (trackpad) or plain scroll wheel pan
+    vp.x -= e.deltaX;
+    vp.y -= e.deltaY;
+    updateZoomLabel();
+    drawMap();
+  }
+}, {passive:false});
+
+// ── Mouse move ────────────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  const {x,y} = canvasXY(e);
+  const tt = document.getElementById('tooltip');
+
+  if (dragState) {
+    tt.style.display = 'none';
+    const wx=(x-vp.x)/vp.scale, wy=(y-vp.y)/vp.scale;
+
+    if (dragState.mode==='pan') {
+      vp.x += x-dragState.lastX; vp.y += y-dragState.lastY;
+      dragState.lastX=x; dragState.lastY=y;
+      dragState.moved=true;
+      canvas.style.cursor='grabbing'; drawMap();
+
+    } else if (dragState.mode==='move') {
+      const dx=wx-dragState.startWX, dy=wy-dragState.startWY;
+      if (Math.abs(dx)*vp.scale>4 || Math.abs(dy)*vp.scale>4) dragState.moved=true;
+      if (dragState.moved) {
+        const room=getRoomsAtLevel(currentMapParent())[dragState.locId];
+        if (room) {
+          room.x = Math.max(0, snap(dragState.origX + dx));
+          room.y = Math.max(0, snap(dragState.origY + dy));
+        }
+        canvas.style.cursor='grabbing'; drawMap();
+      }
+
+    } else if (dragState.mode==='resize') {
+      dragState.moved=true;
+      const dx=wx-dragState.startWX, dy=wy-dragState.startWY;
+      const o=dragState.origRoom, MIN=GRID*2;
+      let {x:rx,y:ry,w:rw,h:rh}=o;
+      const d=dragState.handle;
+      if (d.includes('e')) rw = Math.max(MIN, snap(o.w+dx));
+      if (d.includes('s')) rh = Math.max(MIN, snap(o.h+dy));
+      if (d.includes('w')) { rx=snap(o.x+dx); rw=Math.max(MIN,(o.x+o.w)-rx); }
+      if (d.includes('n')) { ry=snap(o.y+dy); rh=Math.max(MIN,(o.y+o.h)-ry); }
+      const room=getRoomsAtLevel(currentMapParent())[dragState.locId];
+      if (room) { room.x=Math.max(0,rx); room.y=Math.max(0,ry); room.w=rw; room.h=rh; }
+      canvas.style.cursor=RESIZE_CURSORS[d]; drawMap();
+
+    } else if (dragState.mode==='draw') {
+      const {x:wx0,y:wy0}=dragState.startWorld;
+      const raw=normalizeRect(wx0,wy0,wx,wy);
+      // Snap both corners independently
+      const sx=snap(raw.x), sy=snap(raw.y);
+      const sx2=snap(raw.x+raw.w), sy2=snap(raw.y+raw.h);
+      currentDraw={x:sx,y:sy,w:Math.max(GRID,sx2-sx),h:Math.max(GRID,sy2-sy)};
+      drawMap();
+    }
+    return;
+  }
+
+  // Hover cursors (no drag active)
+  mapHoverLocId = hitTestRoom(x,y);
+  if (mapEditMode) {
+    const rooms=getRoomsAtLevel(currentMapParent());
+    let hc=null;
+    for (const lid of [...new Set([selectedRoomId,mapHoverLocId].filter(Boolean))]) {
+      const room=rooms[lid];
+      if (room) { const d=hitTestHandle(x,y,room,false); if(d){hc=RESIZE_CURSORS[d];break;} }
+    }
+    // edit: handle > room-grab > crosshair-to-draw
+    canvas.style.cursor = hc || (mapHoverLocId ? 'grab' : 'crosshair');
+  } else {
+    // view: room = pointer, empty = grab (pan hint)
+    canvas.style.cursor = mapHoverLocId ? 'pointer' : 'grab';
+  }
+  drawMap();
+
+  if (mapHoverLocId && !mapEditMode) {
+    const items=getAllItemsInLocation(mapHoverLocId), loc=getLocation(mapHoverLocId);
+    tt.innerHTML=`<h4>${loc?.name}</h4>`+(items.length
+      ?'<ul>'+items.slice(0,6).map(({item,entry})=>`<li>${item.emoji} ${item.name}: ${entry.qty}</li>`).join('')+'</ul>'
+      :'<span style="color:var(--muted)">Empty</span>');
+    tt.style.display='block'; tt.style.left=(e.clientX+14)+'px'; tt.style.top=(e.clientY-10)+'px';
+  } else { tt.style.display='none'; }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  document.getElementById('tooltip').style.display='none';
+  if (dragState?.moved) saveState();
+  dragState=null; currentDraw=null; mapHoverLocId=null;
+  drawMap();
+});
+
+// ── Mouse down ────────────────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return; // only left button
+  e.preventDefault();
+  const {x,y}=canvasXY(e);
+  const wx=(x-vp.x)/vp.scale, wy=(y-vp.y)/vp.scale;
+
+  if (mapEditMode) {
+    const rooms=getRoomsAtLevel(currentMapParent());
+    // 1. Resize handle — check selected/hovered rooms first, then all rooms
+    const checkIds = [...new Set([selectedRoomId, mapHoverLocId].filter(Boolean))];
+    for (const lid of checkIds) {
+      const room=rooms[lid]; if (!room) continue;
+      const dir=hitTestHandle(x,y,room,false);
+      if (dir) {
+        dragState={mode:'resize',locId:lid,handle:dir,startWX:wx,startWY:wy,
+                   origRoom:{x:room.x,y:room.y,w:room.w,h:room.h},moved:false};
+        return;
+      }
+    }
+    // 2. Move existing room
+    const hit=hitTestRoom(x,y);
+    if (hit) {
+      const room=rooms[hit];
+      dragState={mode:'move',locId:hit,startWX:wx,startWY:wy,origX:room.x,origY:room.y,moved:false};
+      return;
+    }
+    // 3. Draw new room on empty space
+    dragState={mode:'draw',startWorld:{x:wx,y:wy}};
+
+  } else {
+    // View mode: drag room = nothing (click handles inspect), drag empty = pan
+    const hit=hitTestRoom(x,y);
+    if (!hit) {
+      dragState={mode:'pan',lastX:x,lastY:y,moved:false};
+      canvas.style.cursor='grabbing';
+    }
+    // if on a room, do nothing on mousedown — click/dblclick handle it
+  }
+});
+
+// ── Mouse up ──────────────────────────────────────────────────────────────────
+canvas.addEventListener('mouseup', e => {
+  if (e.button !== 0) return;
+  const {x,y}=canvasXY(e);
+  const wx=(x-vp.x)/vp.scale, wy=(y-vp.y)/vp.scale;
+  if (!dragState) return;
+
+  if (dragState.mode==='pan') {
+    dragState=null; canvas.style.cursor='grab'; drawMap(); return;
+  }
+  if (dragState.mode==='move') {
+    if (dragState.moved) { saveState(); dragState=null; canvas.style.cursor='grab'; drawMap(); }
+    else {
+      // No movement = click → select/deselect (edit mode)
+      const hit=dragState.locId; dragState=null;
+      selectedRoomId=selectedRoomId===hit?null:hit;
+      document.getElementById('deleteRoomBtn').style.display=selectedRoomId?'':'none';
+      drawMap();
+    }
+    return;
+  }
+  if (dragState.mode==='resize') {
+    if (dragState.moved) saveState();
+    dragState=null; drawMap(); return;
+  }
+  if (dragState.mode==='draw') {
+    const {x:wx0,y:wy0}=dragState.startWorld;
+    const raw=normalizeRect(wx0,wy0,wx,wy);
+    const sx=snap(raw.x), sy=snap(raw.y);
+    const sx2=snap(raw.x+raw.w), sy2=snap(raw.y+raw.h);
+    const rect={x:sx, y:sy, w:Math.max(GRID,sx2-sx), h:Math.max(GRID,sy2-sy)};
+    dragState=null; currentDraw=null;
+    if (rect.w*vp.scale<10||rect.h*vp.scale<10) {
+      selectedRoomId=null;
+      document.getElementById('deleteRoomBtn').style.display='none';
+      drawMap(); return;
+    }
+    showRoomPopover(rect, e.clientX, e.clientY);
+  }
+});
+
+// ── Click / double-click (view mode inspect + enter) ──────────────────────────
+canvas.addEventListener('click', e => {
+  if (mapEditMode) return;
+  if (dragState?.moved) return; // was a pan, not a click
+  const {x,y}=canvasXY(e);
+  const hit=hitTestRoom(x,y);
+  if (hit) { mapSelectedLocId=mapSelectedLocId===hit?null:hit; setLocationFilter(mapSelectedLocId); drawMap(); }
+  else { mapSelectedLocId=null; clearLocationFilter(); }
+});
+
+canvas.addEventListener('dblclick', e => {
+  if (mapEditMode) return;
+  e.preventDefault();
+  const {x,y}=canvasXY(e);
+  const hit=hitTestRoom(x,y);
+  if (hit) { mapSelectedLocId=null; clearLocationFilter(); mapEnter(hit); }
+});
+
+// ── Touch support ─────────────────────────────────────────────────────────────
+// Model (edit mode):
+//   tap room          → select it (shows handles)
+//   tap empty         → deselect
+//   drag selected room → move
+//   drag selected handle → resize
+//   drag empty        → draw new room
+//   long-press room   → context menu
+// Model (view mode):
+//   tap room          → inspect (sidebar filter)
+//   double-tap room   → enter
+//   drag anywhere     → pan
+//   pinch             → zoom
+
+let _touch1      = null;   // primary touch {id,x,y,wx,wy,t}
+let _touch2      = null;   // second finger {id,x,y}
+let _pinch0      = null;   // pinch snapshot
+let _lastTap     = null;   // for double-tap
+let _touchMoved  = false;
+let _longPressTimer = null;
+
+function _txy(touch) {
+  const r = canvas.getBoundingClientRect();
+  return { x: touch.clientX - r.left, y: touch.clientY - r.top };
+}
+
+function _clearLongPress() {
+  if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+}
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  _clearLongPress();
+
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    const pos = _txy(t);
+    const wx = (pos.x - vp.x) / vp.scale;
+    const wy = (pos.y - vp.y) / vp.scale;
+    _touch1 = { id: t.identifier, ...pos, wx, wy, t: Date.now() };
+    _touch2 = null; _pinch0 = null; _touchMoved = false;
+
+    if (mapEditMode) {
+      const rooms = getRoomsAtLevel(currentMapParent());
+
+      // 1. If a room is selected, check its handles first
+      if (selectedRoomId && rooms[selectedRoomId]) {
+        const dir = hitTestHandle(pos.x, pos.y, rooms[selectedRoomId], true);
+        if (dir) {
+          const room = rooms[selectedRoomId];
+          dragState = { mode:'resize', locId:selectedRoomId, handle:dir,
+                        startWX:wx, startWY:wy,
+                        origRoom:{x:room.x,y:room.y,w:room.w,h:room.h}, moved:false };
+          return;
+        }
+      }
+
+      // 2. Tap on a room body — set up potential move (confirmed on touchmove)
+      //    OR tap to select if it's a different room
+      const hit = hitTestRoom(pos.x, pos.y);
+      if (hit) {
+        const room = rooms[hit];
+        dragState = { mode:'move', locId:hit, startWX:wx, startWY:wy,
+                      origX:room.x, origY:room.y, moved:false };
+
+        // Long-press for context menu
+        _longPressTimer = setTimeout(() => {
+          if (!_touchMoved) {
+            _clearLongPress();
+            dragState = null;
+            ctxTargetLocId = hit;
+            const r = canvas.getBoundingClientRect();
+            showCtxMenu(pos.x + r.left, pos.y + r.top);
+          }
+        }, 500);
+
+      } else {
+        // Empty space → draw
+        dragState = { mode:'draw', startWorld:{ x:wx, y:wy } };
+      }
+
+    } else {
+      // View mode — long-press for context menu
+      const hit = hitTestRoom(pos.x, pos.y);
+      if (hit) {
+        _longPressTimer = setTimeout(() => {
+          if (!_touchMoved) {
+            _clearLongPress();
+            ctxTargetLocId = hit;
+            const r = canvas.getBoundingClientRect();
+            showCtxMenu(pos.x + r.left, pos.y + r.top);
+          }
+        }, 500);
+      }
+    }
+
+  } else if (e.touches.length === 2) {
+    _clearLongPress();
+    dragState = null; currentDraw = null;
+    const a = _txy(e.touches[0]), b = _txy(e.touches[1]);
+    _touch1 = { id: e.touches[0].identifier, ...a, t: _touch1?.t ?? Date.now() };
+    _touch2 = { id: e.touches[1].identifier, ...b };
+    _pinch0 = {
+      dist:  Math.hypot(b.x - a.x, b.y - a.y),
+      scale: vp.scale,
+      cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+      vpx: vp.x, vpy: vp.y
+    };
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+
+  if (e.touches.length === 2 && _pinch0) {
+    _clearLongPress();
+    const a = _txy(e.touches[0]), b = _txy(e.touches[1]);
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    const newScale = Math.min(8, Math.max(0.15, _pinch0.scale * (dist / _pinch0.dist)));
+    const panDX = cx - _pinch0.cx, panDY = cy - _pinch0.cy;
+    vp.scale = newScale;
+    vp.x = _pinch0.cx - (_pinch0.cx - _pinch0.vpx) * (newScale / _pinch0.scale) + panDX;
+    vp.y = _pinch0.cy - (_pinch0.cy - _pinch0.vpy) * (newScale / _pinch0.scale) + panDY;
+    updateZoomLabel(); drawMap();
+    return;
+  }
+
+  if (e.touches.length === 1 && _touch1) {
+    const t = e.touches[0];
+    if (t.identifier !== _touch1.id) return;
+    const pos = _txy(t);
+    const wx = (pos.x - vp.x) / vp.scale, wy = (pos.y - vp.y) / vp.scale;
+    const dx = pos.x - _touch1.x, dy = pos.y - _touch1.y;
+
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      _touchMoved = true;
+      _clearLongPress();
+    }
+
+    if (mapEditMode && dragState && _touchMoved) {
+      if (dragState.mode === 'move') {
+        dragState.moved = true;
+        const ddx = wx - dragState.startWX, ddy = wy - dragState.startWY;
+        const room = getRoomsAtLevel(currentMapParent())[dragState.locId];
+        if (room) {
+          room.x = Math.max(0, snap(dragState.origX + ddx));
+          room.y = Math.max(0, snap(dragState.origY + ddy));
+        }
+        drawMap();
+      } else if (dragState.mode === 'resize') {
+        dragState.moved = true;
+        const ddx = wx - dragState.startWX, ddy = wy - dragState.startWY;
+        const o = dragState.origRoom, MIN = GRID * 2, d = dragState.handle;
+        let {x:rx,y:ry,w:rw,h:rh} = o;
+        if (d.includes('e')) rw = Math.max(MIN, snap(o.w+ddx));
+        if (d.includes('s')) rh = Math.max(MIN, snap(o.h+ddy));
+        if (d.includes('w')) { rx=snap(o.x+ddx); rw=Math.max(MIN,(o.x+o.w)-rx); }
+        if (d.includes('n')) { ry=snap(o.y+ddy); rh=Math.max(MIN,(o.y+o.h)-ry); }
+        const room = getRoomsAtLevel(currentMapParent())[dragState.locId];
+        if (room) { room.x=Math.max(0,rx); room.y=Math.max(0,ry); room.w=rw; room.h=rh; }
+        drawMap();
+      } else if (dragState.mode === 'draw') {
+        const {x:wx0,y:wy0} = dragState.startWorld;
+        const raw = normalizeRect(wx0, wy0, wx, wy);
+        const sx=snap(raw.x), sy=snap(raw.y), sx2=snap(raw.x+raw.w), sy2=snap(raw.y+raw.h);
+        currentDraw = { x:sx, y:sy, w:Math.max(GRID,sx2-sx), h:Math.max(GRID,sy2-sy) };
+        drawMap();
+      }
+    } else if (!dragState || (!mapEditMode && _touchMoved)) {
+      // Pan
+      vp.x += dx; vp.y += dy; drawMap();
+    }
+
+    _touch1 = { ..._touch1, ...pos, wx, wy };
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  _clearLongPress();
+
+  if (e.touches.length >= 2) return;
+  if (e.touches.length === 1) { _pinch0 = null; _touch2 = null; return; }
+
+  // All fingers lifted
+  const wasTouch1 = _touch1;
+  _touch1 = null; _touch2 = null; _pinch0 = null;
+  const now = Date.now();
+
+  // ── Edit mode ──
+  if (mapEditMode) {
+    if (dragState?.mode === 'draw' && currentDraw && _touchMoved) {
+      const rect = { ...currentDraw };
+      dragState = null; currentDraw = null;
+      if (rect.w * vp.scale >= 20 && rect.h * vp.scale >= 20) {
+        const r = canvas.getBoundingClientRect();
+        showRoomPopover(rect, (wasTouch1?.x ?? 100) + r.left, (wasTouch1?.y ?? 100) + r.top);
+      } else { drawMap(); }
+      return;
+    }
+    if (dragState?.moved) { saveState(); dragState = null; currentDraw = null; drawMap(); return; }
+    dragState = null; currentDraw = null;
+
+    // Tap (no move) in edit mode → select/deselect room
+    if (!_touchMoved && wasTouch1) {
+      const pos = { x: wasTouch1.x, y: wasTouch1.y };
+      const hit = hitTestRoom(pos.x, pos.y);
+      // Toggle selection; tap empty deselects
+      selectedRoomId = (hit && hit !== selectedRoomId) ? hit : null;
+      document.getElementById('deleteRoomBtn').style.display = selectedRoomId ? '' : 'none';
+      drawMap();
+    }
+    return;
+  }
+
+  // ── View mode ──
+  dragState = null; currentDraw = null;
+
+  if (!_touchMoved && wasTouch1) {
+    const pos = { x: wasTouch1.x, y: wasTouch1.y };
+    const doubleTap = _lastTap &&
+      (now - _lastTap.t < 350) &&
+      Math.abs(pos.x - _lastTap.x) < 30 &&
+      Math.abs(pos.y - _lastTap.y) < 30;
+
+    if (doubleTap) {
+      _lastTap = null;
+      const hit = hitTestRoom(pos.x, pos.y);
+      if (hit) { mapSelectedLocId=null; clearLocationFilter(); mapEnter(hit); }
+    } else {
+      _lastTap = { ...pos, t: now };
+      const hit = hitTestRoom(pos.x, pos.y);
+      if (hit) {
+        mapSelectedLocId = mapSelectedLocId===hit ? null : hit;
+        setLocationFilter(mapSelectedLocId);
+        drawMap();
+      } else {
+        mapSelectedLocId = null; clearLocationFilter();
+      }
+    }
+  }
+}, { passive: false });
+
+// ── Context menu ─────────────────────────────────────────────────────────────
+let ctxTargetLocId = null;
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const {x, y} = canvasXY(e);
+  const hit = hitTestRoom(x, y);
+  if (!hit) { hideCtxMenu(); return; }
+  ctxTargetLocId = hit;
+  showCtxMenu(e.clientX, e.clientY);
+});
+
+function showCtxMenu(cx, cy) {
+  const menu = document.getElementById('ctxMenu');
+  menu.classList.add('visible');
+  // Keep in viewport
+  const mw = 180, mh = 130;
+  let px = cx + 4, py = cy + 4;
+  if (px + mw > window.innerWidth)  px = cx - mw;
+  if (py + mh > window.innerHeight) py = cy - mh;
+  menu.style.left = px + 'px';
+  menu.style.top  = py + 'px';
+}
+
+function hideCtxMenu() {
+  document.getElementById('ctxMenu').classList.remove('visible');
+}
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('ctxMenu').contains(e.target)) hideCtxMenu();
+});
+
+function ctxRename() {
+  hideCtxMenu();
+  const loc = getLocation(ctxTargetLocId);
+  if (!loc) return;
+  const name = window.prompt('Rename location:', loc.name);
+  if (name && name.trim()) {
+    loc.name = name.trim();
+    saveState();
+    drawMap();
+    renderManage();
+    renderItemList();
+  }
+}
+
+function ctxDelete() {
+  hideCtxMenu();
+  const loc = getLocation(ctxTargetLocId);
+  if (!confirm(`Remove "${loc?.name}" from this map level?\n(Does not delete the location or its items)`)) return;
+  delete getRoomsAtLevel(currentMapParent())[ctxTargetLocId];
+  selectedRoomId = null;
+  document.getElementById('deleteRoomBtn').style.display = 'none';
+  saveState(); drawMap();
+}
+
+function ctxMove() {
+  hideCtxMenu();
+  openMovePicker(ctxTargetLocId);
+}
+
+function ctxPhotos() {
+  hideCtxMenu();
+  openPhotoPicker('location', ctxTargetLocId);
+}
+
+function ctxAddItem() {
+  hideCtxMenu();
+  quickAddItem(ctxTargetLocId);
+}
+
+// ── Quick-add item popover ────────────────────────────────────────────────────
+let quickAddLocId = null;
+
+function quickAddItem(locId) {
+  quickAddLocId = locId;
+  const loc = locId ? getLocation(locId) : null;
+  const pop = document.getElementById('quickAddPopover');
+  const locSel = document.getElementById('quickAddLocSel');
+
+  // Show/hide location selector
+  if (!locId) {
+    document.getElementById('quickAddLocLabel').textContent = '';
+    locSel.style.display = 'block';
+    locSel.innerHTML = '<option value="">— select location —</option>' +
+      state.locations.map(l => `<option value="${l.id}">${getLocationPath(l.id)}</option>`).join('');
+    locSel.value = '';
+    locSel.style.borderColor = '';
+  } else {
+    document.getElementById('quickAddLocLabel').textContent = '📍 ' + getLocationPath(locId);
+    locSel.style.display = 'none';
+  }
+
+  document.getElementById('quickAddSearch').value = '';
+  document.getElementById('quickAddName').value = '';
+  document.getElementById('quickAddEmoji').value = '';
+  document.getElementById('quickAddQty').value = '1';
+  renderQuickAddResults();
+
+  if (isMobile()) {
+    pop.style.left = '16px';
+    pop.style.top  = Math.max(16, (window.innerHeight - 500) / 2) + 'px';
+  } else {
+    const sidebar = document.querySelector('.sidebar');
+    const sr = sidebar.getBoundingClientRect();
+    pop.style.left = (sr.right + 8) + 'px';
+    pop.style.top  = Math.min(sr.top + 80, window.innerHeight - 440) + 'px';
+  }
+  pop.style.display = 'flex';
+  setTimeout(() => document.getElementById('quickAddSearch').focus(), 50);
+}
+
+function closeQuickAdd() {
+  document.getElementById('quickAddPopover').style.display = 'none';
+  quickAddLocId = null;
+}
+
+function renderQuickAddResults() {
+  const q = document.getElementById('quickAddSearch').value.toLowerCase().trim();
+  const el = document.getElementById('quickAddResults');
+
+  // Filter items; if empty query show all
+  const matches = state.items.filter(i =>
+    !q || i.name.toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q)
+  ).slice(0, 8);
+
+  if (!matches.length) {
+    el.innerHTML = `<div style="font-size:.78rem;color:var(--muted);padding:4px 6px">No existing items match</div>`;
+    return;
+  }
+
+  el.innerHTML = matches.map(item => {
+    // Check if already in this location
+    const already = item.stock.find(s => s.locationId === quickAddLocId);
+    return `<div onclick="quickAddExisting('${item.id}')" style="
+      display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;
+      cursor:pointer;transition:background .1s;font-size:.84rem;
+    " onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <span style="font-size:1rem">${item.emoji||'📦'}</span>
+      <span style="flex:1">${item.name}</span>
+      ${already
+        ? `<span style="font-size:.7rem;font-family:'Space Mono',monospace;color:var(--accent)">+${already.qty} here</span>`
+        : `<span style="font-size:.7rem;color:var(--muted)">add</span>`}
+    </div>`;
+  }).join('');
+}
+
+function quickAddExisting(itemId) {
+  if (!guardEdit()) return;
+  if (!quickAddLocId) return;
+  const item = state.items.find(i => i.id === itemId);
+  if (!item) return;
+
+  const qty = parseInt(document.getElementById('quickAddQty').value) || 1;
+  const existing = item.stock.find(s => s.locationId === quickAddLocId);
+  if (existing) {
+    existing.qty += qty;
+  } else {
+    item.stock.push({ locationId: quickAddLocId, qty });
+  }
+
+  saveState();
+  renderItemList();
+  if (selectedItemId === itemId) renderItemDetail(itemId);
+  closeQuickAdd();
+  showToast(`${item.emoji||'📦'} ${item.name} added to ${getLocation(quickAddLocId)?.name}`);
+}
+
+function confirmQuickAdd() {
+  if (!guardEdit()) return;
+  const name = document.getElementById('quickAddName').value.trim();
+  if (!name) { document.getElementById('quickAddName').focus(); return; }
+
+  const emoji = document.getElementById('quickAddEmoji').value.trim() || '📦';
+  const qty   = parseInt(document.getElementById('quickAddQty').value) || 1;
+
+  // If no location chosen yet (e.g. from mobile FAB), pick via select
+  if (!quickAddLocId) {
+    if (!state.locations.length) {
+      showToast('Add a location first in the Manage tab');
+      return;
+    }
+    const locSel = document.getElementById('quickAddLocSel');
+    if (locSel && locSel.value) {
+      quickAddLocId = locSel.value;
+    } else {
+      showToast('Please select a location');
+      const locSel = document.getElementById('quickAddLocSel');
+      if (locSel) locSel.style.borderColor = 'var(--accent3)';
+      return;
+    }
+  }
+
+  const newItem = { id: uid(), name, emoji, category: '', stock: [{ locationId: quickAddLocId, qty }] };
+  state.items.push(newItem);
+  saveState();
+  renderItemList();
+  closeQuickAdd();
+  showToast(`${emoji} ${name} created in ${getLocation(quickAddLocId)?.name || 'unknown'}`);
+}
+
+// Close quick-add on Escape (handled in existing keydown) or outside click
+document.addEventListener('mousedown', e => {
+  const pop = document.getElementById('quickAddPopover');
+  if (pop.style.display !== 'none' && !pop.contains(e.target)) closeQuickAdd();
+});
+
+// ── Move picker ───────────────────────────────────────────────────────────────
+let moveTargetLocId = null;
+let moveSelectedParentId = null; // '__root__' for top level, or a locId
+
+function openMovePicker(locId) {
+  moveTargetLocId = locId;
+  moveSelectedParentId = null;
+  const loc = getLocation(locId);
+  document.getElementById('movePickerName').textContent = loc?.name || '';
+  renderMoveTree();
+  document.getElementById('movePicker').classList.add('visible');
+}
+
+function renderMoveTree() {
+  const el = document.getElementById('moveTree');
+  // Build flat list of all locations except the target and its descendants
+  const forbidden = new Set([moveTargetLocId, ...getDescendants(moveTargetLocId)]);
+  let html = '';
+
+  // Top-level option
+  html += `<div class="move-node ${moveSelectedParentId==='__root__'?'selected':''}"
+    onclick="selectMoveParent('__root__')">
+    <span>🏠</span> <strong>Top level</strong>
+    <span class="move-path">root</span>
+  </div>`;
+
+  // Render all locations as indented tree
+  function renderNodes(parentId, depth) {
+    state.locations.filter(l => l.parentId === (parentId||null)).forEach(l => {
+      if (forbidden.has(l.id)) return;
+      const indent = depth * 16;
+      const isSel = moveSelectedParentId === l.id;
+      html += `<div class="move-node ${isSel?'selected':''}" onclick="selectMoveParent('${l.id}')"
+        style="padding-left:${10+indent}px">
+        <span>${depth===0?'📁':'└'}</span>
+        <span>${l.name}</span>
+        <span class="move-path">${getLocationPath(l.id)}</span>
+      </div>`;
+      renderNodes(l.id, depth+1);
+    });
+  }
+  renderNodes(null, 0);
+
+  el.innerHTML = html;
+}
+
+function selectMoveParent(id) {
+  moveSelectedParentId = id;
+  renderMoveTree();
+}
+
+function confirmMove() {
+  if (!moveTargetLocId || moveSelectedParentId === null) return;
+  const loc = getLocation(moveTargetLocId);
+  if (!loc) return;
+
+  const oldParentId = loc.parentId;
+  const oldParentKey = oldParentId || '__root__';
+  const newParentId = moveSelectedParentId === '__root__' ? null : moveSelectedParentId;
+  const newParentKey = newParentId || '__root__';
+
+  if (oldParentKey === newParentKey) { cancelMove(); return; }
+
+  // Update the location's parent in the hierarchy
+  loc.parentId = newParentId;
+
+  // Move the map room: remove from old level, add to new level (centered)
+  const oldRooms = getRoomsAtLevel(oldParentKey);
+  const newRooms = getRoomsAtLevel(newParentKey);
+  const oldRoom = oldRooms[moveTargetLocId];
+
+  if (oldRoom) {
+    // Place it in the center of the new map canvas by default
+    newRooms[moveTargetLocId] = { ...oldRoom, x: 40, y: 40 };
+    delete oldRooms[moveTargetLocId];
+  }
+
+  saveState();
+  cancelMove();
+  drawMap();
+  renderManage();
+  renderItemList();
+
+  // Show a brief confirmation banner
+  showToast(`"${loc.name}" moved to ${newParentId ? getLocation(newParentId)?.name : 'top level'}`);
+}
+
+function cancelMove() {
+  document.getElementById('movePicker').classList.remove('visible');
+  moveTargetLocId = null;
+  moveSelectedParentId = null;
+}
+
+// Close move picker on backdrop click
+document.getElementById('movePicker').addEventListener('click', e => {
+  if (e.target === document.getElementById('movePicker')) cancelMove();
+});
+
+// ── Toast notification ────────────────────────────────────────────────────────
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+      background:var(--surface);border:1px solid var(--accent);color:var(--text);
+      padding:10px 20px;border-radius:30px;font-size:.85rem;z-index:9999;
+      box-shadow:0 4px 16px #000a;transition:opacity .3s;pointer-events:none;font-family:'DM Sans',sans-serif;`;
+    document.body.appendChild(t);
+  }
+  t.textContent = '✅ ' + msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2800);
+}
+
+// ── Room creation popover ────────────────────────────────────────────────────
+let pendingRect = null;
+
+function showRoomPopover(rect, clientX, clientY) {
+  pendingRect = rect;
+  const pop = document.getElementById('roomPopover');
+  const parentKey = currentMapParent();
+  const rooms = getRoomsAtLevel(parentKey);
+  const validChildren = parentKey === '__root__' ? getTopLevel() : getChildren(parentKey);
+  const unplaced = validChildren.filter(c => !rooms[c.id]);
+
+  // Context label
+  const parentLoc = parentKey === '__root__' ? null : getLocation(parentKey);
+  document.getElementById('popContext').textContent =
+    parentLoc ? `Inside: ${getLocationPath(parentKey)}` : 'Top level';
+
+  // Unplaced existing locations
+  const unplacedWrap = document.getElementById('popUnplacedWrap');
+  const unplacedEl = document.getElementById('popUnplaced');
+  const divider = document.getElementById('popDivider');
+  if (unplaced.length) {
+    unplacedWrap.style.display = 'block';
+    divider.style.display = unplaced.length ? 'flex' : 'none';
+    unplacedEl.innerHTML = unplaced.map(u => `
+      <div class="unplaced-item" onclick="placeExistingRoom('${u.id}')">
+        <span>📍</span><span>${u.name}</span>
+        <span style="margin-left:auto;font-size:.7rem;color:var(--muted)">place here</span>
+      </div>`).join('');
+  } else {
+    unplacedWrap.style.display = 'none';
+  }
+
+  // Clear input
+  const input = document.getElementById('popNameInput');
+  input.value = '';
+  input.placeholder = parentLoc ? `e.g. Shelf A, Table…` : `e.g. Office, Cellar…`;
+
+  // Position popover near the drawn rect, kept in viewport
+  const pw = 260, ph = 240;
+  let px = clientX + 12, py = clientY - 20;
+  if (px + pw > window.innerWidth - 10) px = clientX - pw - 12;
+  if (py + ph > window.innerHeight - 10) py = window.innerHeight - ph - 10;
+  pop.style.left = px + 'px';
+  pop.style.top  = py + 'px';
+  pop.classList.add('visible');
+  setTimeout(() => input.focus(), 50);
+
+  // Keep the drawn outline visible while popover is open
+  currentDraw = rect;
+  drawMap();
+}
+
+function placeExistingRoom(locId) {
+  if (!pendingRect) return;
+  const parentKey = currentMapParent();
+  const rooms = getRoomsAtLevel(parentKey);
+  const colorIdx = Object.keys(rooms).length % COLORS.length;
+  rooms[locId] = { ...pendingRect, color: COLORS[colorIdx] };
+  saveState();
+  pendingRect = null; currentDraw = null;
+  cancelRoomPopover();
+  drawMap();
+}
+
+function confirmRoomPopover() {
+  const name = document.getElementById('popNameInput').value.trim();
+  if (!name) { document.getElementById('popNameInput').focus(); return; }
+  if (!pendingRect) { cancelRoomPopover(); return; }
+
+  const parentKey = currentMapParent();
+  const parentId = parentKey === '__root__' ? null : parentKey;
+  const rooms = getRoomsAtLevel(parentKey);
+
+  // Create the new location in the hierarchy
+  const newLoc = { id: uid(), name, parentId };
+  state.locations.push(newLoc);
+
+  // Place it on the map
+  const colorIdx = Object.keys(rooms).length % COLORS.length;
+  rooms[newLoc.id] = { ...pendingRect, color: COLORS[colorIdx] };
+
+  saveState();
+  pendingRect = null; currentDraw = null;
+  cancelRoomPopover();
+  drawMap();
+  renderItemList(); // refresh sidebar counts
+}
+
+function cancelRoomPopover() {
+  document.getElementById('roomPopover').classList.remove('visible');
+  pendingRect = null; currentDraw = null;
+  drawMap();
+}
+
+// Close popover on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    cancelRoomPopover();
+    cancelMove();
+    hideCtxMenu();
+    closeQuickAdd();
+  }
+  if (e.key === 'Enter' && document.getElementById('roomPopover').classList.contains('visible')) {
+    e.preventDefault(); confirmRoomPopover();
+  }
+});
+
+// ─── MANAGE ──────────────────────────────────────────────────────────────────
+let editingItemId = null;
+let stockEntries = [];
+
+function renderManage() {
+  renderLocationTree();
+  populateLocationSelects();
+}
+
+function renderLocationTree() {
+  const el = document.getElementById('locationTree');
+  el.innerHTML = buildTree(null);
+}
+
+function buildTree(parentId) {
+  const locs = state.locations.filter(l=>l.parentId===(parentId||null));
+  if (!locs.length) return '';
+  return locs.map(loc => {
+    const children = getChildren(loc.id);
+    const items = getAllItemsInLocation(loc.id);
+    return `<div class="tree-node">
+      <div class="tree-header" onclick="toggleTree('tree_${loc.id}', this)">
+        ${children.length ? `<span class="tree-toggle" id="tog_${loc.id}">▶</span>` : '<span class="tree-toggle"></span>'}
+        <span class="tree-label">📍 ${loc.name}</span>
+        <span class="tree-count">${items.length} item${items.length!==1?'s':''}</span>
+        <button class="delete-btn" onclick="event.stopPropagation();deleteLocation('${loc.id}')">🗑</button>
+      </div>
+      ${children.length ? `<div class="tree-children" id="tree_${loc.id}">${buildTree(loc.id)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleTree(id, header) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('open');
+  const tog = header.querySelector('.tree-toggle');
+  if (tog) tog.classList.toggle('open', el.classList.contains('open'));
+}
+
+function populateLocationSelects() {
+  const all = state.locations;
+
+  // Parent select in add location
+  const parentSel = document.getElementById('newLocParent');
+  parentSel.innerHTML = '<option value="">— top level —</option>' +
+    all.map(l=>`<option value="${l.id}">${getLocationPath(l.id)}</option>`).join('');
+}
+
+function addLocation() {
+  if (!guardEdit()) return;
+  const name = document.getElementById('newLocName').value.trim();
+  const parentId = document.getElementById('newLocParent').value || null;
+  if (!name) { alert('Enter a location name'); return; }
+  state.locations.push({id: uid(), name, parentId});
+  saveState();
+  document.getElementById('newLocName').value = '';
+  renderManage();
+}
+
+function clearAllData() {
+  if (!guardEdit()) return;
+  if (!confirm('Delete ALL items, locations and map layouts?\n\nThis cannot be undone.')) return;
+  state.locations = [];
+  state.items     = [];
+  state.mapRooms  = {};
+  lastSavedState  = deepClone(state);
+  // Force a full replace (a patch would produce nothing useful)
+  if (useServer) {
+    fetch(API + '/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state)
+    }).catch(console.warn);
+  } else {
+    localStorage.setItem('stockmap_v2', JSON.stringify(state));
+  }
+  selectedItemId = null;
+  mapStack = []; mapEditMode = false;
+  document.getElementById('editMapBtn').textContent = '✏️ Edit Map';
+  clearLocationFilter();
+  clearItemForm();
+  renderItemList();
+  renderManage();
+  if (currentTab === 'map') renderMap();
+  showToast('All data cleared');
+}
+
+function deleteLocation(id) {
+  const descendants = getDescendants(id);
+  const toDelete = [id, ...descendants];
+  if (!confirm(`Delete "${getLocation(id)?.name}" and all sub-locations?`)) return;
+  state.locations = state.locations.filter(l=>!toDelete.includes(l.id));
+  // Clean stock entries
+  state.items.forEach(item => {
+    item.stock = item.stock.filter(s=>!toDelete.includes(s.locationId));
+  });
+  toDelete.forEach(id => delete state.mapRooms[id]);
+  saveState();
+  renderManage();
+}
+
+// Stock entries in add item form
+function addStockEntry() {
+  stockEntries.push({locationId: '', qty: 1});
+  renderStockEntries();
+}
+
+function renderStockEntries() {
+  const all = state.locations;
+  const el = document.getElementById('stockEntries');
+  el.innerHTML = stockEntries.map((e,i) => `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <select onchange="stockEntries[${i}].locationId=this.value" style="flex:2;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.85rem;outline:none">
+        <option value="">— select location —</option>
+        ${all.map(l=>`<option value="${l.id}" ${e.locationId===l.id?'selected':''}>${getLocationPath(l.id)}</option>`).join('')}
+      </select>
+      <input type="number" min="0" value="${e.qty}" onchange="stockEntries[${i}].qty=+this.value"
+        style="width:64px;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:Space Mono,monospace;font-size:.85rem;outline:none">
+      <button class="delete-btn" onclick="stockEntries.splice(${i},1);renderStockEntries()">✕</button>
+    </div>
+  `).join('');
+}
+
+function saveItem() {
+  if (!guardEdit()) return;
+  const name = document.getElementById('mItemName').value.trim();
+  if (!name) { alert('Enter item name'); return; }
+  const cat = document.getElementById('mItemCat').value.trim();
+  const emoji = document.getElementById('mItemEmoji').value.trim() || '📦';
+  const stock = stockEntries.filter(e=>e.locationId);
+
+  if (editingItemId) {
+    const item = state.items.find(i=>i.id===editingItemId);
+    if (item) { item.name=name; item.category=cat; item.emoji=emoji; item.stock=stock; }
+  } else {
+    state.items.push({id:uid(), name, category:cat, emoji, stock});
+  }
+  saveState();
+  clearItemForm();
+  renderItemList();
+  renderManage();
+}
+
+function clearItemForm() {
+  editingItemId = null;
+  document.getElementById('mItemName').value = '';
+  document.getElementById('mItemCat').value = '';
+  document.getElementById('mItemEmoji').value = '';
+  stockEntries = [];
+  renderStockEntries();
+  document.getElementById('editingLabel').style.display='none';
+}
+
+function editItem(id) {
+  const item = state.items.find(i=>i.id===id);
+  if (!item) return;
+  switchTab('manage');
+  setTimeout(()=>{
+    editingItemId = id;
+    document.getElementById('mItemName').value = item.name;
+    document.getElementById('mItemCat').value = item.category||'';
+    document.getElementById('mItemEmoji').value = item.emoji||'';
+    stockEntries = item.stock.map(s=>({...s}));
+    renderStockEntries();
+    const lbl = document.getElementById('editingLabel');
+    lbl.style.display='block';
+    lbl.textContent = `Editing: ${item.name}`;
+    document.getElementById('mItemName').focus();
+  }, 100);
+}
+
+// ─── PHOTO SYSTEM ────────────────────────────────────────────────────────────
+// Photos are stored as files on the server under images/items/<id>/ or images/locations/<id>/
+// The JSON only stores nothing — photos are fetched fresh from /api/images/:type/:id
+// _photoCtx: { type:'items'|'locations', id, urls:[] }
+
+let _photoCtx = null;
+let _lbIndex  = 0;
+
+// ── Open file picker ──────────────────────────────────────────────────────────
+function openPhotoPicker(type, id) {
+  if (!guardEdit()) return;
+  _photoCtx = { type, id, urls: [] }; // urls refreshed after upload
+  const inp = document.getElementById('photoFileInput');
+  if (isMobile()) inp.setAttribute('capture', 'environment');
+  else inp.removeAttribute('capture');
+  inp.value = '';
+  inp.click();
+}
+
+async function handlePhotoUpload(event) {
+  if (!_photoCtx) return;
+  const files = [...event.target.files];
+  if (!files.length) return;
+  showToast(`Uploading ${files.length} photo${files.length>1?'s':''}…`);
+
+  for (const file of files) {
+    // Compress client-side before upload to save bandwidth
+    const blob = await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, 1200 / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width*scale); c.height = Math.round(img.height*scale);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob(b => resolve(b), 'image/jpeg', 0.80);
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    try {
+      const r = await apiFetch(`/api/images/${_photoCtx.type}/${_photoCtx.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: blob
+      });
+      if (!r.ok) throw new Error(await r.text());
+    } catch (e) {
+      showToast('Upload failed: ' + e.message); return;
+    }
+  }
+
+  showToast(`${files.length} photo${files.length>1?'s':''} saved`);
+  if (_photoCtx.type === 'items' && selectedItemId === _photoCtx.id) renderItemDetail(_photoCtx.id);
+  if (_photoCtx.type === 'locations') renderMapLocationPhotos(_photoCtx.id);
+}
+
+// ── Fetch and render photo strip ──────────────────────────────────────────────
+async function renderPhotoStrip(type, id, container, editable) {
+  let urls = [];
+  if (useServer || serverEverConnected) {
+    try {
+      const r = await apiFetch(`/api/images/${type}/${id}`);
+      if (r.ok) { const d = await r.json(); urls = d.urls || []; }
+    } catch {}
+  }
+
+  const thumbs = urls.map((url, i) => `
+    <div class="photo-thumb" onclick="openLightboxURLs(${JSON.stringify(urls)},${i},'${type}','${id}')">
+      <img src="${url}" loading="lazy" alt="photo ${i+1}" crossorigin="anonymous">
+      ${editable && !readOnly ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${url.split('/').pop()}')" title="Delete">✕</button>` : ''}
+    </div>`).join('');
+
+  const addBtn = (editable && !readOnly) ? `
+    <button class="photo-add-btn" onclick="openPhotoPicker('${type}','${id}')" title="Add photo">
+      <span class="add-icon">📷</span><span>Add</span>
+    </button>` : '';
+
+  if (container) container.innerHTML = `<div class="photo-strip">${thumbs}${addBtn}</div>`;
+  return urls;
+}
+
+// Placeholder for inline HTML rendering (photos loaded async after render)
+function photoStripPlaceholder(type, id, editable=true) {
+  const containerId = `photos-${type}-${id}`;
+  // Kick off async load
+  setTimeout(async () => {
+    const el = document.getElementById(containerId);
+    if (el) await renderPhotoStrip(type, id, el, editable);
+  }, 0);
+  return `<div id="${containerId}" class="photo-strip"><span style="color:var(--muted);font-size:.8rem">Loading photos…</span></div>`;
+}
+
+async function deletePhotoURL(type, id, filename) {
+  if (!guardEdit()) return;
+  if (!confirm(`Delete this photo?`)) return;
+  await apiFetch(`/api/images/${type}/${id}/${filename}`, { method: 'DELETE' });
+  if (type === 'items' && selectedItemId === id) renderItemDetail(id);
+  if (type === 'locations') renderMapLocationPhotos(id);
+}
+
+// ── Lightbox (URL-based) ──────────────────────────────────────────────────────
+let _lbUrls = [], _lbType = '', _lbId = '';
+
+function openLightboxURLs(urls, index, type, id) {
+  _lbUrls = urls; _lbType = type; _lbId = id; _lbIndex = index;
+  _photoCtx = { type, id };
+  updateLightbox();
+  document.getElementById('photoLightbox').classList.add('open');
+  document.addEventListener('keydown', lbKeyHandler);
+}
+
+function updateLightbox() {
+  document.getElementById('lbImg').src = _lbUrls[_lbIndex] || '';
+  document.getElementById('lbCounter').textContent = `${_lbIndex+1} / ${_lbUrls.length}`;
+}
+function closeLightbox() {
+  document.getElementById('photoLightbox').classList.remove('open');
+  document.removeEventListener('keydown', lbKeyHandler);
+}
+function lbClickOutside(e) { if (e.target===document.getElementById('photoLightbox')) closeLightbox(); }
+function lbPrev() { _lbIndex=(_lbIndex-1+_lbUrls.length)%_lbUrls.length; updateLightbox(); }
+function lbNext() { _lbIndex=(_lbIndex+1)%_lbUrls.length; updateLightbox(); }
+async function lbDelete() {
+  if (!guardEdit()) return;
+  const url = _lbUrls[_lbIndex];
+  const fname = url.split('/').pop();
+  await deletePhotoURL(_lbType, _lbId, fname);
+  _lbUrls.splice(_lbIndex, 1);
+  if (!_lbUrls.length) { closeLightbox(); return; }
+  _lbIndex = Math.min(_lbIndex, _lbUrls.length-1);
+  updateLightbox();
+}
+function lbKeyHandler(e) {
+  if (e.key==='ArrowLeft') lbPrev();
+  if (e.key==='ArrowRight') lbNext();
+  if (e.key==='Escape') closeLightbox();
+}
+
+let _lbSwipeX = null;
+document.getElementById('photoLightbox').addEventListener('touchstart', e => { _lbSwipeX=e.touches[0].clientX; },{passive:true});
+document.getElementById('photoLightbox').addEventListener('touchend', e => {
+  if (_lbSwipeX===null) return;
+  const dx=e.changedTouches[0].clientX-_lbSwipeX; _lbSwipeX=null;
+  if (Math.abs(dx)>50) dx<0?lbNext():lbPrev();
+},{passive:true});
+
+// ── Room photos panel ─────────────────────────────────────────────────────────
+function renderMapLocationPhotos(locId) {
+  const el = document.getElementById('mapLocPhotos');
+  if (!el) return;
+  const loc = getLocation(locId);
+  if (!loc) { el.innerHTML=''; return; }
+  el.innerHTML = `
+    <div style="padding:12px 16px;border-top:1px solid var(--border)">
+      <p class="section-title" style="margin:0 0 8px">📷 Room photos — ${loc.name}</p>
+      ${photoStripPlaceholder('locations', locId, true)}
+    </div>`;
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+(async () => {
+  // If server injected a guest role, set read-only immediately before loading
+  if (window.__authRole === 'guest') {
+    readOnly = true;
+    serverEverConnected = true;
+    useServer = true;
+    setReadOnly(true);
+  }
+
+  await loadState();
+  switchTab('search');
+  renderStockEntries();
+  renderManage();
+})();
+
+// Mouse back button (MB4) = navigate up one level on the map
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 3 || e.button === 4) {
+    e.preventDefault();
+    if (currentTab === 'map' && mapStack.length > 0) mapGoTo(mapStack.length - 1);
+  }
+});
+canvas.addEventListener('mouseup', e => {
+  if (e.button === 3 || e.button === 4) e.preventDefault();
+});
+
+// Resize observer — watch the canvas itself
+const _resizeObs = new ResizeObserver(() => {
+  resizeCanvas();
+  if (currentTab === 'map') drawMap();
+});
+_resizeObs.observe(canvas);
+</script>
+<!-- Hidden file input for photo uploads -->
+<input type="file" id="photoFileInput" accept="image/*" multiple capture="environment" style="display:none" onchange="handlePhotoUpload(event)">
+
+<!-- Photo lightbox -->
+<div id="photoLightbox" onclick="lbClickOutside(event)">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <img id="lbImg" src="" alt="">
+  <div class="lightbox-controls">
+    <button class="lb-btn" onclick="lbPrev()">← Prev</button>
+    <span class="lb-counter" id="lbCounter"></span>
+    <button class="lb-btn" onclick="lbNext()">Next →</button>
+    <button class="lb-btn danger" onclick="lbDelete()">🗑 Delete</button>
+  </div>
+</div>
+
+<!-- Mobile bottom navigation -->
+<nav class="mobile-nav" id="mobileNav">
+  <button class="mobile-nav-btn active" id="mnav-search" onclick="mobileSwitchTab('search')">
+    <span class="nav-icon">🔍</span>Items
+  </button>
+  <button class="mobile-nav-btn" id="mnav-map" onclick="mobileSwitchTab('map')">
+    <span class="nav-icon">🗺</span>Map
+  </button>
+  <button class="mobile-nav-btn" id="mnav-manage" onclick="mobileSwitchTab('manage')">
+    <span class="nav-icon">⚙️</span>Manage
+  </button>
+</nav>
+
+<!-- Mobile FAB: quick-add item -->
+<button class="mobile-fab" id="mobileFab" onclick="quickAddItem(null)" title="Add item">＋</button>
+
+</body>
+</html>
