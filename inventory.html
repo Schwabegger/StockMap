@@ -570,9 +570,6 @@
     .search-wrap input { font-size: 16px; padding: 11px 12px 11px 36px; }
     .sidebar-section { padding: 12px; }
 
-    /* Hide connection badge */
-    #connBadge { display: none !important; }
-
     /* Bigger context menu touch targets */
     .ctx-item { padding: 13px 16px; font-size: .95rem; }
 
@@ -1156,24 +1153,28 @@
 
 <div class="tooltip" id="tooltip"></div>
 
+<!-- Hidden file input for photo uploads -->
+<input type="file" id="photoFileInput" accept="image/*" multiple capture="environment" style="display:none" onchange="handlePhotoUpload(event)">
+
+<!-- Photo lightbox -->
+<div id="photoLightbox" onclick="lbClickOutside(event)">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <img id="lbImg" src="" alt="">
+  <div class="lightbox-controls">
+    <button class="lb-btn" onclick="lbPrev()">← Prev</button>
+    <span class="lb-counter" id="lbCounter"></span>
+    <button class="lb-btn" onclick="lbNext()">Next →</button>
+    <button class="lb-btn danger" onclick="lbDelete()">🗑 Delete</button>
+  </div>
+</div>
+
 <script>
-// ── Auth (injected by server on page load) ────────────────────────────────────
+// ── Auth (role injected by server on page load) ───────────────────────────────
 /*__AUTH_ROLE__*/
-// If not injected (local file), default to admin
-if (!window.__authRole) { window.__authRole = 'admin'; window.__authUser = 'local'; }
-
-// Use server-injected base64 credentials for all fetch calls.
-// Browsers don't automatically forward Basic Auth to fetch() — we do it manually.
-const _authCreds = window.__authCreds || null;
-
-function authHeaders() {
-  if (!_authCreds) return {};
-  return { 'Authorization': 'Basic ' + _authCreds };
-}
+// API calls use the session cookie set by the server — no manual auth needed.
 
 async function apiFetch(url, opts={}) {
-  const headers = { ...authHeaders(), ...(opts.headers||{}) };
-  return fetch(url, { ...opts, headers });
+  return fetch(url, { ...opts, credentials: 'same-origin' });
 }
 
 // ─── DATA MODEL ───────────────────────────────────────────────────────────────
@@ -1183,11 +1184,8 @@ let state = {
   mapRooms: {}
 };
 
-// ── Storage backend: server API when available, localStorage fallback ─────────
+// ── Storage backend: server only ──────────────────────────────────────────────
 const API = '/api';
-let useServer   = false;
-let readOnly    = false;   // true when server was used but is now unreachable
-let serverEverConnected = false; // did we successfully load from server at startup?
 let saveDebounceTimer = null;
 
 // Snapshot of state at last successful load/save — used to compute patches
@@ -1195,123 +1193,20 @@ let lastSavedState = null;
 
 function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
 
-async function detectServer() {
-  if (!_authCreds) { useServer = false; updateConnectionBadge(); return; }
-  try {
-    const r = await apiFetch(API + '/ping', { signal: AbortSignal.timeout(3000) });
-    useServer = r.ok;
-  } catch { useServer = false; }
-  if (serverEverConnected && !useServer) setReadOnly(true);
-  else if (useServer) setReadOnly(false);
-  updateConnectionBadge();
-}
-
-function setReadOnly(on) {
-  if (readOnly === on) return;
-  readOnly = on;
-
-  // Show / hide the read-only banner
-  let banner = document.getElementById('readOnlyBanner');
-  if (on) {
-    if (!banner) {
-      banner = document.createElement('div');
-      banner.id = 'readOnlyBanner';
-      banner.style.cssText = `
-        position:fixed;top:0;left:0;right:0;z-index:9999;
-        background:#ff6b6b;color:#000;
-        padding:8px 16px;font-size:.82rem;font-weight:700;
-        font-family:'Space Mono',monospace;text-align:center;
-        display:flex;align-items:center;justify-content:center;gap:10px;`;
-      banner.innerHTML = `<span>⚠️ Server unreachable — read-only mode. Edits are disabled until connection is restored.</span>`;
-      document.body.prepend(banner);
-    }
-    banner.style.display = 'flex';
-    // Push body content down so banner doesn't cover header
-    document.body.style.paddingTop = '36px';
-  } else {
-    if (banner) { banner.style.display = 'none'; }
-    document.body.style.paddingTop = '';
-  }
-}
-
-// Gate function — call before any write operation
-function guardEdit(action) {
-  if (readOnly) {
-    showToast('⚠️ Read-only — server is unreachable');
-    return false;
-  }
-  return true;
-}
-
-function updateConnectionBadge() {
-  let badge = document.getElementById('connBadge');
-  if (!badge) {
-    badge = document.createElement('div');
-    badge.id = 'connBadge';
-    badge.style.cssText = `
-      position:fixed;bottom:14px;left:14px;z-index:9998;
-      padding:4px 10px;border-radius:20px;font-size:.7rem;font-family:'Space Mono',monospace;
-      border:1px solid;pointer-events:none;transition:opacity .3s;`;
-    document.body.appendChild(badge);
-  }
-  if (useServer) {
-    badge.textContent = '● server';
-    badge.style.color = '#7bffb4'; badge.style.borderColor = '#7bffb4';
-    badge.style.background = 'rgba(123,255,180,.08)';
-  } else if (serverEverConnected) {
-    badge.textContent = '● offline';
-    badge.style.color = '#ff6b6b'; badge.style.borderColor = '#ff6b6b';
-    badge.style.background = 'rgba(255,107,107,.08)';
-  } else {
-    badge.textContent = '● local only';
-    badge.style.color = '#ff9f47'; badge.style.borderColor = '#ff9f47';
-    badge.style.background = 'rgba(255,159,71,.08)';
-  }
-}
+// Gate function — always returns true (kept so call sites don't need changing)
+function guardEdit() { return true; }
 
 async function loadState() {
-  // Skip network entirely if no credentials injected (local file mode)
-  if (_authCreds) {
-    try {
-      const r = await apiFetch(API + '/state', { signal: AbortSignal.timeout(8000) });
-      if (r.ok) {
-        const data = await r.json();
-        state = data;
-        if (!state.mapRooms)  state.mapRooms  = {};
-        if (!state.locations) state.locations = [];
-        if (!state.items)     state.items     = [];
-        lastSavedState = deepClone(state);
-        useServer = true;
-        serverEverConnected = true;
-        setReadOnly(false);
-        updateConnectionBadge();
-        console.log(`[StockMap] Loaded from server: ${state.locations.length} locations, ${state.items.length} items`);
-        return;
-      } else {
-        console.warn('[StockMap] /state returned', r.status);
-        useServer = false;
-      }
-    } catch (e) {
-      console.warn('[StockMap] Server unreachable:', e.message);
-      useServer = false;
-      if (serverEverConnected) setReadOnly(true);
-    }
-  }
-
-  // Fallback: localStorage
-  updateConnectionBadge();
-  try {
-    const raw = localStorage.getItem('stockmap_v2');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      state = parsed;
-      if (!state.mapRooms)  state.mapRooms  = {};
-      if (!state.locations) state.locations = [];
-      if (!state.items)     state.items     = [];
-      console.log(`[StockMap] Loaded from localStorage: ${state.locations.length} locations, ${state.items.length} items`);
-    }
-  } catch(e) { console.warn('[StockMap] localStorage failed:', e); }
+  const r = await apiFetch(API + '/state');
+  if (r.status === 401) { window.location.reload(); return; }
+  if (!r.ok) throw new Error(`Server returned ${r.status}`);
+  const data = await r.json();
+  state = data;
+  if (!state.mapRooms)  state.mapRooms  = {};
+  if (!state.locations) state.locations = [];
+  if (!state.items)     state.items     = [];
   lastSavedState = deepClone(state);
+  console.log(`[StockMap] Loaded: ${state.locations.length} locations, ${state.items.length} items`);
 }
 
 // Build a minimal patch from what changed since last save
@@ -1373,58 +1268,21 @@ function buildPatch() {
 }
 
 function saveState() {
-  if (readOnly) { showToast('⚠️ Read-only — server is unreachable'); return; }
   clearTimeout(saveDebounceTimer);
   saveDebounceTimer = setTimeout(_doSave, 400);
 }
 
 async function _doSave() {
-  if (useServer) {
-    const patch = buildPatch();
-    // Nothing actually changed
-    if (!patch.items && !patch.locations && !patch.mapRooms) return;
-    try {
-      const r = await apiFetch(API + '/patch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch)
-      });
-      if (!r.ok) throw new Error(await r.text());
-      lastSavedState = deepClone(state); // update baseline
-      return;
-    } catch (e) {
-      console.warn('Patch save failed, falling back to localStorage:', e);
-      useServer = false;
-      updateConnectionBadge();
-    }
-  }
-  localStorage.setItem('stockmap_v2', JSON.stringify(state));
+  const patch = buildPatch();
+  if (!patch.items && !patch.locations && !patch.mapRooms) return;
+  const r = await apiFetch(API + '/patch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch)
+  });
+  if (!r.ok) throw new Error(await r.text());
   lastSavedState = deepClone(state);
 }
-
-// Poll for server reconnection every 5s
-setInterval(async () => {
-  const wasReadOnly = readOnly;
-  await detectServer(); // this calls setReadOnly internally
-  if (wasReadOnly && !readOnly) {
-    // Just reconnected — pull fresh state from server
-    try {
-      const r = await apiFetch(API + '/state');
-      if (r.ok) {
-        const data = await r.json();
-        state = data;
-        if (!state.mapRooms)  state.mapRooms  = {};
-        if (!state.locations) state.locations = [];
-        if (!state.items)     state.items     = [];
-        lastSavedState = deepClone(state);
-        renderItemList();
-        renderManage();
-        if (currentTab === 'map') renderMap();
-        showToast('✅ Reconnected — data refreshed');
-      }
-    } catch(e) { console.warn('Reconnect pull failed:', e); }
-  }
-}, 5000);
 
 function uid() { return Math.random().toString(36).slice(2,9); }
 
@@ -1700,7 +1558,7 @@ let mapStack = []; // stack of locId strings; empty = root level
 let mapEditMode = false;
 let currentDraw = null;
 let mapHoverLocId = null;
-let selectedRoomId = null; // for delete
+// selectedRoomId removed — use selectedRoomIds Set above
 
 function currentMapParent() {
   return mapStack.length ? mapStack[mapStack.length-1] : '__root__';
@@ -1816,9 +1674,9 @@ function drawMap() {
   Object.entries(rooms).forEach(([locId, room]) => {
     const loc = getLocation(locId); if (!loc) return;
     const isHovered   = mapHoverLocId===locId;
-    const isSelected  = selectedRoomId===locId;
+    const isSelected  = selectedRoomIds.has(locId);
     const isInspected = mapSelectedLocId===locId;
-    const isDragging  = dragState?.mode==='move' && dragState.locId===locId;
+    const isDragging  = dragState?.mode==='move' && dragState.locIds?.has(locId);
     const color = room.color||'#47c8ff';
 
     ctx.save();
@@ -1862,9 +1720,9 @@ function drawMap() {
   Object.entries(rooms).forEach(([locId, room]) => {
     const loc = getLocation(locId); if (!loc) return;
     const isHovered   = mapHoverLocId===locId;
-    const isSelected  = selectedRoomId===locId;
+    const isSelected  = selectedRoomIds.has(locId);
     const isInspected = mapSelectedLocId===locId;
-    const isDragging  = dragState?.mode==='move' && dragState.locId===locId;
+    const isDragging  = dragState?.mode==='move' && dragState.locIds?.has(locId);
     const color = room.color||'#47c8ff';
     const hasChildren = getChildren(locId).length>0 ||
       Object.keys(getRoomsAtLevel(locId)).length>0;
@@ -1948,7 +1806,7 @@ function renderMapBreadcrumb() {
 function mapGoTo(stackIndex) {
   if (stackIndex === 0) mapStack = [];
   else mapStack = mapStack.slice(0, stackIndex);
-  selectedRoomId = null;
+  selectedRoomIds.clear();
   mapSelectedLocId = null;
   clearLocationFilter();
   vp = {x:0,y:0,scale:1}; updateZoomLabel();
@@ -1961,7 +1819,7 @@ function mapGoTo(stackIndex) {
 
 function mapEnter(locId) {
   mapStack.push(locId);
-  selectedRoomId = null;
+  selectedRoomIds.clear();
   mapSelectedLocId = null;
   mapEditMode = false;
   document.getElementById('editMapBtn').textContent = '✏️ Edit Map';
@@ -1986,12 +1844,12 @@ function toggleMapEdit() {
 }
 
 function deleteSelectedRoom() {
-  if (!selectedRoomId) return;
-  const loc = getLocation(selectedRoomId);
-  if (!confirm(`Remove "${loc?.name}" from this map level? (Does not delete the location itself)`)) return;
+  if (!selectedRoomIds.size) return;
+  const names = [...selectedRoomIds].map(id => getLocation(id)?.name).filter(Boolean).join('", "');
+  if (!confirm(`Remove "${names}" from this map level? (Does not delete the locations themselves)`)) return;
   const parentKey = currentMapParent();
-  delete state.mapRooms[parentKey][selectedRoomId];
-  selectedRoomId = null;
+  selectedRoomIds.forEach(id => delete state.mapRooms[parentKey][id]);
+  selectedRoomIds.clear();
   saveState();
   drawMap();
   document.getElementById('deleteRoomBtn').style.display = 'none';
@@ -1999,7 +1857,7 @@ function deleteSelectedRoom() {
 
 function updateMapUI() {
   document.getElementById('mapInstructions').innerHTML = mapEditMode
-    ? 'Drag to draw a rectangle and place a sub-location.'
+    ? 'Click to select · Shift-click to multi-select · Drag selected rooms to move together · Drag empty space to draw.'
     : 'Click a room to enter it. Double-click also works.';
 }
 
@@ -2092,6 +1950,7 @@ const RESIZE_CURSORS = {
 
 let dragState = null;
 let mapSelectedLocId = null;
+let selectedRoomIds = new Set(); // multi-select in edit mode
 
 // ── Grid snapping ─────────────────────────────────────────────────────────────
 const GRID = 20; // snap resolution in world px (half a grid cell for finer control)
@@ -2148,11 +2007,14 @@ canvas.addEventListener('mousemove', e => {
       const dx=wx-dragState.startWX, dy=wy-dragState.startWY;
       if (Math.abs(dx)*vp.scale>4 || Math.abs(dy)*vp.scale>4) dragState.moved=true;
       if (dragState.moved) {
-        const room=getRoomsAtLevel(currentMapParent())[dragState.locId];
-        if (room) {
-          room.x = Math.max(0, snap(dragState.origX + dx));
-          room.y = Math.max(0, snap(dragState.origY + dy));
-        }
+        const rooms=getRoomsAtLevel(currentMapParent());
+        dragState.locIds.forEach(id => {
+          const room=rooms[id], orig=dragState.origins[id];
+          if (room && orig) {
+            room.x = Math.max(0, snap(orig.x + dx));
+            room.y = Math.max(0, snap(orig.y + dy));
+          }
+        });
         canvas.style.cursor='grabbing'; drawMap();
       }
 
@@ -2187,7 +2049,7 @@ canvas.addEventListener('mousemove', e => {
   if (mapEditMode) {
     const rooms=getRoomsAtLevel(currentMapParent());
     let hc=null;
-    for (const lid of [...new Set([selectedRoomId,mapHoverLocId].filter(Boolean))]) {
+    for (const lid of [...new Set([...selectedRoomIds,mapHoverLocId].filter(Boolean))]) {
       const room=rooms[lid];
       if (room) { const d=hitTestHandle(x,y,room,false); if(d){hc=RESIZE_CURSORS[d];break;} }
     }
@@ -2224,26 +2086,39 @@ canvas.addEventListener('mousedown', e => {
 
   if (mapEditMode) {
     const rooms=getRoomsAtLevel(currentMapParent());
-    // 1. Resize handle — check selected/hovered rooms first, then all rooms
-    const checkIds = [...new Set([selectedRoomId, mapHoverLocId].filter(Boolean))];
-    for (const lid of checkIds) {
-      const room=rooms[lid]; if (!room) continue;
-      const dir=hitTestHandle(x,y,room,false);
-      if (dir) {
-        dragState={mode:'resize',locId:lid,handle:dir,startWX:wx,startWY:wy,
-                   origRoom:{x:room.x,y:room.y,w:room.w,h:room.h},moved:false};
-        return;
+    // 1. Resize handle on a selected room (single selection only)
+    if (selectedRoomIds.size === 1) {
+      const [lid] = selectedRoomIds;
+      const room=rooms[lid];
+      if (room) {
+        const dir=hitTestHandle(x,y,room,false);
+        if (dir) {
+          dragState={mode:'resize',locId:lid,handle:dir,startWX:wx,startWY:wy,
+                     origRoom:{x:room.x,y:room.y,w:room.w,h:room.h},moved:false};
+          return;
+        }
       }
     }
-    // 2. Move existing room
+    // 2. Hit a room body
     const hit=hitTestRoom(x,y);
     if (hit) {
-      const room=rooms[hit];
-      dragState={mode:'move',locId:hit,startWX:wx,startWY:wy,origX:room.x,origY:room.y,moved:false};
+      // If hit room is already selected, start a group move of all selected rooms
+      if (selectedRoomIds.has(hit)) {
+        const origins = {};
+        selectedRoomIds.forEach(id => {
+          const r=rooms[id]; if(r) origins[id]={x:r.x,y:r.y};
+        });
+        dragState={mode:'move',locIds:new Set(selectedRoomIds),startWX:wx,startWY:wy,origins,moved:false};
+      } else {
+        // Click on unselected room — will select it on mouseup if no drag
+        const room=rooms[hit];
+        dragState={mode:'move',locIds:new Set([hit]),startWX:wx,startWY:wy,
+                   origins:{[hit]:{x:room.x,y:room.y}},moved:false,pendingSelect:hit,shiftKey:e.shiftKey};
+      }
       return;
     }
-    // 3. Draw new room on empty space
-    dragState={mode:'draw',startWorld:{x:wx,y:wy}};
+    // 3. Empty space — start potential draw (will only create room if dragged)
+    dragState={mode:'draw',startWorld:{x:wx,y:wy},startScreen:{x,y}};
 
   } else {
     // View mode: drag room = nothing (click handles inspect), drag empty = pan
@@ -2267,12 +2142,23 @@ canvas.addEventListener('mouseup', e => {
     dragState=null; canvas.style.cursor='grab'; drawMap(); return;
   }
   if (dragState.mode==='move') {
-    if (dragState.moved) { saveState(); dragState=null; canvas.style.cursor='grab'; drawMap(); }
-    else {
-      // No movement = click → select/deselect (edit mode)
-      const hit=dragState.locId; dragState=null;
-      selectedRoomId=selectedRoomId===hit?null:hit;
-      document.getElementById('deleteRoomBtn').style.display=selectedRoomId?'':'none';
+    if (dragState.moved) {
+      saveState(); dragState=null; canvas.style.cursor='grab'; drawMap();
+    } else {
+      // No movement = click → select/deselect
+      const hit=dragState.pendingSelect ?? [...dragState.locIds][0];
+      const shift=dragState.shiftKey;
+      dragState=null;
+      if (shift) {
+        // Shift-click: toggle this room in/out of selection
+        if (selectedRoomIds.has(hit)) selectedRoomIds.delete(hit);
+        else selectedRoomIds.add(hit);
+      } else {
+        // Plain click: select only this room (or deselect if already sole selection)
+        if (selectedRoomIds.size===1 && selectedRoomIds.has(hit)) selectedRoomIds.clear();
+        else { selectedRoomIds.clear(); selectedRoomIds.add(hit); }
+      }
+      document.getElementById('deleteRoomBtn').style.display=selectedRoomIds.size?'':'none';
       drawMap();
     }
     return;
@@ -2283,16 +2169,20 @@ canvas.addEventListener('mouseup', e => {
   }
   if (dragState.mode==='draw') {
     const {x:wx0,y:wy0}=dragState.startWorld;
+    const {x:sx0,y:sy0}=dragState.startScreen;
+    dragState=null; currentDraw=null;
+    // Only create a room if the mouse actually moved enough on screen
+    if (Math.abs(x-sx0)<6 && Math.abs(y-sy0)<6) {
+      // Plain click on empty space — deselect all
+      selectedRoomIds.clear();
+      document.getElementById('deleteRoomBtn').style.display='none';
+      drawMap(); return;
+    }
     const raw=normalizeRect(wx0,wy0,wx,wy);
     const sx=snap(raw.x), sy=snap(raw.y);
     const sx2=snap(raw.x+raw.w), sy2=snap(raw.y+raw.h);
     const rect={x:sx, y:sy, w:Math.max(GRID,sx2-sx), h:Math.max(GRID,sy2-sy)};
-    dragState=null; currentDraw=null;
-    if (rect.w*vp.scale<10||rect.h*vp.scale<10) {
-      selectedRoomId=null;
-      document.getElementById('deleteRoomBtn').style.display='none';
-      drawMap(); return;
-    }
+    if (rect.w*vp.scale<10||rect.h*vp.scale<10) { drawMap(); return; }
     showRoomPopover(rect, e.clientX, e.clientY);
   }
 });
@@ -2360,25 +2250,29 @@ canvas.addEventListener('touchstart', e => {
     if (mapEditMode) {
       const rooms = getRoomsAtLevel(currentMapParent());
 
-      // 1. If a room is selected, check its handles first
-      if (selectedRoomId && rooms[selectedRoomId]) {
-        const dir = hitTestHandle(pos.x, pos.y, rooms[selectedRoomId], true);
-        if (dir) {
-          const room = rooms[selectedRoomId];
-          dragState = { mode:'resize', locId:selectedRoomId, handle:dir,
-                        startWX:wx, startWY:wy,
-                        origRoom:{x:room.x,y:room.y,w:room.w,h:room.h}, moved:false };
-          return;
+      // 1. If a single room is selected, check its handles first
+      if (selectedRoomIds.size === 1) {
+        const [selId] = selectedRoomIds;
+        if (rooms[selId]) {
+          const dir = hitTestHandle(pos.x, pos.y, rooms[selId], true);
+          if (dir) {
+            const room = rooms[selId];
+            dragState = { mode:'resize', locId:selId, handle:dir,
+                          startWX:wx, startWY:wy,
+                          origRoom:{x:room.x,y:room.y,w:room.w,h:room.h}, moved:false };
+            return;
+          }
         }
       }
 
-      // 2. Tap on a room body — set up potential move (confirmed on touchmove)
-      //    OR tap to select if it's a different room
+      // 2. Tap on a room body — set up potential move
       const hit = hitTestRoom(pos.x, pos.y);
       if (hit) {
-        const room = rooms[hit];
-        dragState = { mode:'move', locId:hit, startWX:wx, startWY:wy,
-                      origX:room.x, origY:room.y, moved:false };
+        const origins = {};
+        const moveIds = selectedRoomIds.has(hit) ? new Set(selectedRoomIds) : new Set([hit]);
+        moveIds.forEach(id => { const r=rooms[id]; if(r) origins[id]={x:r.x,y:r.y}; });
+        dragState = { mode:'move', locIds:moveIds, startWX:wx, startWY:wy,
+                      origins, moved:false, pendingSelect:selectedRoomIds.has(hit)?null:hit };
 
         // Long-press for context menu
         _longPressTimer = setTimeout(() => {
@@ -2393,7 +2287,7 @@ canvas.addEventListener('touchstart', e => {
 
       } else {
         // Empty space → draw
-        dragState = { mode:'draw', startWorld:{ x:wx, y:wy } };
+        dragState = { mode:'draw', startWorld:{ x:wx, y:wy }, startScreen:{ x:pos.x, y:pos.y } };
       }
 
     } else {
@@ -2459,11 +2353,14 @@ canvas.addEventListener('touchmove', e => {
       if (dragState.mode === 'move') {
         dragState.moved = true;
         const ddx = wx - dragState.startWX, ddy = wy - dragState.startWY;
-        const room = getRoomsAtLevel(currentMapParent())[dragState.locId];
-        if (room) {
-          room.x = Math.max(0, snap(dragState.origX + ddx));
-          room.y = Math.max(0, snap(dragState.origY + ddy));
-        }
+        const rooms = getRoomsAtLevel(currentMapParent());
+        dragState.locIds.forEach(id => {
+          const room=rooms[id], orig=dragState.origins[id];
+          if (room && orig) {
+            room.x = Math.max(0, snap(orig.x + ddx));
+            room.y = Math.max(0, snap(orig.y + ddy));
+          }
+        });
         drawMap();
       } else if (dragState.mode === 'resize') {
         dragState.moved = true;
@@ -2517,17 +2414,30 @@ canvas.addEventListener('touchend', e => {
       return;
     }
     if (dragState?.moved) { saveState(); dragState = null; currentDraw = null; drawMap(); return; }
-    dragState = null; currentDraw = null;
 
-    // Tap (no move) in edit mode → select/deselect room
+    // Tap (no move) in edit mode
     if (!_touchMoved && wasTouch1) {
       const pos = { x: wasTouch1.x, y: wasTouch1.y };
       const hit = hitTestRoom(pos.x, pos.y);
-      // Toggle selection; tap empty deselects
-      selectedRoomId = (hit && hit !== selectedRoomId) ? hit : null;
-      document.getElementById('deleteRoomBtn').style.display = selectedRoomId ? '' : 'none';
+      if (hit) {
+        const pending = dragState?.pendingSelect;
+        dragState = null; currentDraw = null;
+        if (pending) {
+          // Tapped an unselected room — select only it
+          selectedRoomIds.clear(); selectedRoomIds.add(hit);
+        } else {
+          // Tapped already-selected room — deselect if sole, else keep set
+          if (selectedRoomIds.size === 1 && selectedRoomIds.has(hit)) selectedRoomIds.clear();
+        }
+      } else {
+        dragState = null; currentDraw = null;
+        selectedRoomIds.clear(); // tap empty → deselect all
+      }
+      document.getElementById('deleteRoomBtn').style.display = selectedRoomIds.size ? '' : 'none';
       drawMap();
+      return;
     }
+    dragState = null; currentDraw = null;
     return;
   }
 
@@ -2610,7 +2520,7 @@ function ctxDelete() {
   const loc = getLocation(ctxTargetLocId);
   if (!confirm(`Remove "${loc?.name}" from this map level?\n(Does not delete the location or its items)`)) return;
   delete getRoomsAtLevel(currentMapParent())[ctxTargetLocId];
-  selectedRoomId = null;
+  selectedRoomIds.clear();
   document.getElementById('deleteRoomBtn').style.display = 'none';
   saveState(); drawMap();
 }
@@ -3047,6 +2957,7 @@ function addLocation() {
   saveState();
   document.getElementById('newLocName').value = '';
   renderManage();
+  renderItemList();
 }
 
 function clearAllData() {
@@ -3057,15 +2968,11 @@ function clearAllData() {
   state.mapRooms  = {};
   lastSavedState  = deepClone(state);
   // Force a full replace (a patch would produce nothing useful)
-  if (useServer) {
-    fetch(API + '/state', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state)
-    }).catch(console.warn);
-  } else {
-    localStorage.setItem('stockmap_v2', JSON.stringify(state));
-  }
+  apiFetch(API + '/state', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state)
+  }).catch(console.error);
   selectedItemId = null;
   mapStack = []; mapEditMode = false;
   document.getElementById('editMapBtn').textContent = '✏️ Edit Map';
@@ -3089,6 +2996,7 @@ function deleteLocation(id) {
   toDelete.forEach(id => delete state.mapRooms[id]);
   saveState();
   renderManage();
+  renderItemList();
 }
 
 // Stock entries in add item form
@@ -3224,20 +3132,18 @@ async function handlePhotoUpload(event) {
 // ── Fetch and render photo strip ──────────────────────────────────────────────
 async function renderPhotoStrip(type, id, container, editable) {
   let urls = [];
-  if (useServer || serverEverConnected) {
-    try {
-      const r = await apiFetch(`/api/images/${type}/${id}`);
-      if (r.ok) { const d = await r.json(); urls = d.urls || []; }
-    } catch {}
-  }
+  try {
+    const r = await apiFetch(`/api/images/${type}/${id}`);
+    if (r.ok) { const d = await r.json(); urls = d.urls || []; }
+  } catch {}
 
   const thumbs = urls.map((url, i) => `
     <div class="photo-thumb" onclick="openLightboxURLs(${JSON.stringify(urls)},${i},'${type}','${id}')">
       <img src="${url}" loading="lazy" alt="photo ${i+1}" crossorigin="anonymous">
-      ${editable && !readOnly ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${url.split('/').pop()}')" title="Delete">✕</button>` : ''}
+      ${editable ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${url.split('/').pop()}')" title="Delete">✕</button>` : ''}
     </div>`).join('');
 
-  const addBtn = (editable && !readOnly) ? `
+  const addBtn = editable ? `
     <button class="photo-add-btn" onclick="openPhotoPicker('${type}','${id}')" title="Add photo">
       <span class="add-icon">📷</span><span>Add</span>
     </button>` : '';
@@ -3326,16 +3232,17 @@ function renderMapLocationPhotos(locId) {
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 (async () => {
-  // If server injected a guest role, set read-only immediately before loading
-  if (window.__authRole === 'guest') {
-    readOnly = true;
-    serverEverConnected = true;
-    useServer = true;
-    setReadOnly(true);
+  try {
+    await loadState();
+  } catch (e) {
+    console.error('[StockMap] loadState failed:', e);
+    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#0f0f13;color:#ff6b6b;font-family:monospace;font-size:1rem;text-align:center;padding:32px">
+      <div><strong>Could not connect to server.</strong><br><br>${e.message}<br><br>Make sure the server is running and reload the page.</div>
+    </div>`;
+    return;
   }
-
-  await loadState();
   switchTab('search');
+  renderItemList();
   renderStockEntries();
   renderManage();
 })();
@@ -3358,21 +3265,6 @@ const _resizeObs = new ResizeObserver(() => {
 });
 _resizeObs.observe(canvas);
 </script>
-<!-- Hidden file input for photo uploads -->
-<input type="file" id="photoFileInput" accept="image/*" multiple capture="environment" style="display:none" onchange="handlePhotoUpload(event)">
-
-<!-- Photo lightbox -->
-<div id="photoLightbox" onclick="lbClickOutside(event)">
-  <button class="lb-close" onclick="closeLightbox()">✕</button>
-  <img id="lbImg" src="" alt="">
-  <div class="lightbox-controls">
-    <button class="lb-btn" onclick="lbPrev()">← Prev</button>
-    <span class="lb-counter" id="lbCounter"></span>
-    <button class="lb-btn" onclick="lbNext()">Next →</button>
-    <button class="lb-btn danger" onclick="lbDelete()">🗑 Delete</button>
-  </div>
-</div>
-
 <!-- Mobile bottom navigation -->
 <nav class="mobile-nav" id="mobileNav">
   <button class="mobile-nav-btn active" id="mnav-search" onclick="mobileSwitchTab('search')">

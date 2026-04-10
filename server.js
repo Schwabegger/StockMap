@@ -26,24 +26,28 @@ const crypto = require('crypto');
 // Parses KEY=value lines, ignores comments (#) and blank lines.
 // Environment variables already set (e.g. from Docker) take priority over .env.
 function loadEnv() {
-  const envFile = path.join(__dirname, '.env');
-  try {
-    const lines = fs.readFileSync(envFile, 'utf8').split('\n');
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line || line.startsWith('#')) continue;
-      const eq = line.indexOf('=');
-      if (eq === -1) continue;
-      const key = line.slice(0, eq).trim();
-      const val = line.slice(eq + 1).trim()
-        .replace(/^["']|["']$/g, ''); // strip optional surrounding quotes
-      // Only set if not already defined in the environment (Docker wins)
-      if (key && !(key in process.env)) {
-        process.env[key] = val;
+  // Try .env first, then env (without dot) as fallback
+  const candidates = [path.join(__dirname, '.env'), path.join(__dirname, 'env')];
+  for (const envFile of candidates) {
+    try {
+      const lines = fs.readFileSync(envFile, 'utf8').split('\n');
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        const eq = line.indexOf('=');
+        if (eq === -1) continue;
+        const key = line.slice(0, eq).trim();
+        const val = line.slice(eq + 1).trim()
+          .replace(/^["']|["']$/g, ''); // strip optional surrounding quotes
+        // Only set if not already defined in the environment (Docker wins)
+        if (key && !(key in process.env)) {
+          process.env[key] = val;
+        }
       }
+      break; // stop after first successful file
+    } catch {
+      // File not found — try next candidate
     }
-  } catch {
-    // No .env file — that's fine, fall back to defaults below
   }
 }
 
@@ -66,22 +70,38 @@ const USERS = {
   [GUEST_USER]: { pass: GUEST_PASS, role: 'guest'  },
 };
 
-function checkAuth(req) {
+// In-memory session store: token -> { user, role }
+const sessions = new Map();
+
+function makeToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function checkBasicAuth(req) {
   const header = req.headers['authorization'] || '';
   if (!header.startsWith('Basic ')) return null;
   const [user, ...rest] = Buffer.from(header.slice(6), 'base64').toString().split(':');
   const pass = rest.join(':');
   const record = USERS[user];
   if (!record) return null;
-  // Constant-time compare to avoid timing attacks
   const valid = crypto.timingSafeEqual(
     Buffer.from(record.pass), Buffer.from(pass.padEnd(record.pass.length))
   ) && pass.length === record.pass.length;
   return valid ? { user, role: record.role } : null;
 }
 
+function getSessionFromCookie(req) {
+  const cookieHeader = req.headers['cookie'] || '';
+  for (const part of cookieHeader.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === 'sm_session') return sessions.get(v.join('=')) || null;
+  }
+  return null;
+}
+
 function requireAuth(req, res) {
-  const auth = checkAuth(req);
+  // Accept session cookie (API calls) or Basic Auth (first page load)
+  const auth = getSessionFromCookie(req) || checkBasicAuth(req);
   if (!auth) {
     res.writeHead(401, {
       'WWW-Authenticate': 'Basic realm="StockMap"',
@@ -200,14 +220,18 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && (p === '/' || p === '/index.html')) {
       const auth = requireAuth(req, res);
       if (!auth) return;
-      // Inject role AND base64 credentials so JS fetch calls can authenticate
-      // (browsers don't auto-forward Basic Auth to fetch() calls)
-      const rawCreds = Buffer.from(req.headers['authorization'].slice(6), 'base64').toString();
-      const b64Creds = Buffer.from(rawCreds).toString('base64'); // re-encode cleanly
+      // Create a session token so JS fetch calls can authenticate without
+      // re-sending Basic Auth (browsers don't forward it to fetch())
+      const token = makeToken();
+      sessions.set(token, { user: auth.user, role: auth.role });
       let html = await fs.promises.readFile(HTML_FILE, 'utf8');
       html = html.replace('/*__AUTH_ROLE__*/',
-        `window.__authRole='${auth.role}';window.__authUser='${auth.user}';window.__authCreds='${b64Creds}';`);
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        `window.__authRole='${auth.role}';window.__authUser='${auth.user}';`);
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Set-Cookie': `sm_session=${token}; Path=/; HttpOnly; SameSite=Strict`
+      });
       res.end(html);
       return;
     }

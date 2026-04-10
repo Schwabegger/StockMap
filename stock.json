@@ -1,0 +1,38 @@
+{
+  "locations": [
+    {
+      "id": "l5ge8p3",
+      "name": "Haus 5",
+      "parentId": null
+    },
+    {
+      "id": "uyrarkr",
+      "name": "Haus 3",
+      "parentId": null
+    },
+    {
+      "id": "qfsy358",
+      "name": "Haus 3333",
+      "parentId": null
+    }
+  ],
+  "items": [],
+  "mapRooms": {
+    "__root__": {
+      "uyrarkr": {
+        "x": 940,
+        "y": 580,
+        "w": 320,
+        "h": 160,
+        "color": "#47c8ff"
+      },
+      "qfsy358": {
+        "x": 460,
+        "y": 740,
+        "w": 480,
+        "h": 360,
+        "color": "#47c8ff"
+      }
+    }
+  }
+}
