@@ -1364,7 +1364,7 @@
 <div class="tooltip" id="tooltip"></div>
 
 <!-- Hidden file input for photo uploads -->
-<input type="file" id="photoFileInput" accept="image/*" multiple capture="environment" style="display:none" onchange="handlePhotoUpload(event)">
+<input type="file" id="photoFileInput" accept="image/*" multiple style="display:none" onchange="handlePhotoUpload(event)">
 
 <!-- Photo lightbox -->
 <div id="photoLightbox" onclick="lbClickOutside(event)">
@@ -3334,8 +3334,7 @@ function openPhotoPicker(type, id) {
   if (!guardEdit()) return;
   _photoCtx = { type, id, urls: [] }; // urls refreshed after upload
   const inp = document.getElementById('photoFileInput');
-  if (isMobile()) inp.setAttribute('capture', 'environment');
-  else inp.removeAttribute('capture');
+  inp.removeAttribute('capture');
   inp.value = '';
   inp.click();
 }
