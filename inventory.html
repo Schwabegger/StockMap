@@ -1376,6 +1376,7 @@
     <button class="lb-btn" onclick="lbPrev()">← Prev</button>
     <span class="lb-counter" id="lbCounter"></span>
     <button class="lb-btn" onclick="lbNext()">Next →</button>
+    <button class="lb-btn" onclick="lbRotate()" id="lbRotateBtn" title="Rotate 90° clockwise">↻ Rotate</button>
     <button class="lb-btn danger" onclick="lbDelete()">🗑 Delete</button>
   </div>
 </div>
@@ -3381,20 +3382,24 @@ async function handlePhotoUpload(event) {
 }
 
 // ── Fetch and render photo strip ──────────────────────────────────────────────
-async function renderPhotoStrip(type, id, container, editable) {
+async function renderPhotoStrip(type, id, container, editable, cacheBust) {
   let urls = [];
   try {
     const r = await apiFetch(`/api/images/${type}/${id}`);
     if (r.ok) { const d = await r.json(); urls = d.urls || []; }
   } catch {}
 
+  // Optionally append a cache-buster (e.g. after a rotate) so browsers reload the file
+  const bust = cacheBust ? `?_r=${cacheBust}` : '';
+  const displayUrls = urls.map(u => u + bust);
+
   // Store url list in a closure-captured variable so onclick doesn't need to embed JSON in HTML
   const stripId = `strip-${type}-${id}-${Date.now()}`;
-  window[stripId] = urls;
-  const thumbs = urls.map((url, i) => `
+  window[stripId] = displayUrls;
+  const thumbs = displayUrls.map((url, i) => `
     <div class="photo-thumb" onclick="openLightboxURLs(window['${stripId}'],${i},'${type}','${id}')">
       <img src="${url}" loading="lazy" alt="photo ${i+1}" crossorigin="anonymous">
-      ${editable ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${url.split('/').pop()}')" title="Delete">✕</button>` : ''}
+      ${editable ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${urls[i].split('/').pop()}')" title="Delete">✕</button>` : ''}
     </div>`).join('');
 
   const addBtn = editable ? `
@@ -3458,6 +3463,10 @@ function openLightboxURLs(urls, index, type, id) {
   _lbUrls = urls; _lbType = type; _lbId = id; _lbIndex = index;
   _photoCtx = { type, id };
   updateLightbox();
+  // Show rotate/delete only for admins
+  const isAdmin = window.__authRole === 'admin';
+  document.getElementById('lbRotateBtn').style.display = isAdmin ? '' : 'none';
+  document.querySelector('#photoLightbox .lb-btn.danger').style.display = isAdmin ? '' : 'none';
   document.getElementById('photoLightbox').classList.add('open');
   document.addEventListener('keydown', lbKeyHandler);
 }
@@ -3487,6 +3496,72 @@ async function lbDelete() {
   if (!_lbUrls.length) { closeLightbox(); return; }
   _lbIndex = Math.min(_lbIndex, _lbUrls.length-1);
   updateLightbox();
+}
+
+async function lbRotate() {
+  if (!guardEdit()) return;
+  const url = _lbUrls[_lbIndex];
+  if (!url) return;
+
+  const btn = document.getElementById('lbRotateBtn');
+  btn.disabled = true;
+  btn.textContent = '↻ …';
+
+  try {
+    // Load the image fresh (cache-busted) so we always get the current file
+    const blob = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        // Step 1: bake the browser-rendered pixels (EXIF-corrected) into a neutral canvas.
+        // img.width/height reflect the display size after EXIF is applied; naturalWidth/Height
+        // may be swapped if EXIF says the image is rotated — using them directly would
+        // produce a double-rotation. Drawing into a same-size canvas bakes the correct pixels.
+        const baked = document.createElement('canvas');
+        baked.width  = img.width;
+        baked.height = img.height;
+        baked.getContext('2d').drawImage(img, 0, 0, img.width, img.height);
+
+        // Step 2: rotate 90° CW on a second canvas (swap w/h)
+        const c = document.createElement('canvas');
+        c.width  = img.height;
+        c.height = img.width;
+        const ctx = c.getContext('2d');
+        ctx.translate(c.width, 0);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(baked, 0, 0);
+        c.toBlob(b => b ? resolve(b) : reject(new Error('Canvas export failed')), 'image/jpeg', 0.92);
+      };
+      img.onerror = reject;
+      const baseUrl = url.split('?')[0];
+      img.src = baseUrl + '?_r=' + Date.now();
+    });
+
+    // Overwrite the same file in place — no rename, no ordering issues
+    const fname = url.split('?')[0].split('/').pop();
+    const putRes = await apiFetch(`/api/images/${_lbType}/${_lbId}/${fname}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: blob
+    });
+    if (!putRes.ok) throw new Error(await putRes.text());
+
+    // Cache-bust the in-memory URL so lightbox img reloads from disk
+    const newUrl = url.split('?')[0] + '?_r=' + Date.now();
+    _lbUrls[_lbIndex] = newUrl;
+    updateLightbox();
+
+    // Rebuild the thumbnail strip with cache-busted URLs so thumbs update too
+    const container = document.getElementById(`photos-${_lbType}-${_lbId}`);
+    if (container) await renderPhotoStrip(_lbType, _lbId, container, true, Date.now());
+
+    showToast('Image rotated');
+  } catch (e) {
+    showToast('Rotate failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Rotate';
+  }
 }
 
 function lbKeyHandler(e) {

@@ -237,7 +237,7 @@ const server = http.createServer(async (req, res) => {
 
   // CORS (for local dev / direct file access)
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
@@ -353,6 +353,21 @@ const server = http.createServer(async (req, res) => {
         const [, type, id] = listMatch;
         const files = await listImages(type, id);
         json(200, { urls: files.map(f => `/images/${type}/${id}/${f}`) });
+        return;
+      }
+
+      // ── Overwrite image in place  PUT /api/images/:type/:id/:filename ──
+      const putMatch = p.match(/^\/api\/images\/(items|locations)\/([^/]+)\/([^/]+)$/);
+      if (method === 'PUT' && putMatch) {
+        if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
+        const [, type, id, fname] = putMatch;
+        if (!MIME[path.extname(fname).toLowerCase()] || fname.includes('/') || fname.includes('..')) {
+          json(400, {error:'Invalid filename'}); return;
+        }
+        const fpath = path.join(IMG_DIR, type, id, fname);
+        const buf = await readBodyBuffer(req, 15);
+        await fs.promises.writeFile(fpath, buf);
+        json(200, { ok:true, url: `/images/${type}/${id}/${fname}` });
         return;
       }
 
