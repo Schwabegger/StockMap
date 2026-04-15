@@ -61,6 +61,7 @@ const GUEST_USER = process.env.GUEST_USER         || 'guest';
 const GUEST_PASS = process.env.GUEST_PASS         || 'readonly';
 
 const DATA_FILE  = path.join(__dirname, 'stock.json');
+const TX_FILE    = path.join(__dirname, 'transactions.json');
 const HTML_FILE  = path.join(__dirname, 'inventory.html');
 const IMG_DIR    = path.join(__dirname, 'images');
 
@@ -115,7 +116,9 @@ function requireAuth(req, res) {
 
 // ── In-memory state ───────────────────────────────────────────────────────────
 let liveState  = null;
+let liveTx     = null;   // transactions live separately
 let writeQueue = Promise.resolve();
+let txWriteQueue = Promise.resolve();
 
 async function ensureLoaded() {
   if (liveState) return;
@@ -128,12 +131,36 @@ async function ensureLoaded() {
   if (!liveState.mapRooms)  liveState.mapRooms  = {};
   if (!liveState.locations) liveState.locations = [];
   if (!liveState.items)     liveState.items     = [];
+  // Migrate: if old stock.json has transactions, move them out
+  if (liveState.transactions) {
+    liveTx = liveState.transactions;
+    delete liveState.transactions;
+    queueWrite();
+    queueTxWrite();
+  }
+}
+
+async function ensureTxLoaded() {
+  if (liveTx) return;
+  try {
+    const raw = await fs.promises.readFile(TX_FILE, 'utf8');
+    liveTx = JSON.parse(raw);
+  } catch {
+    liveTx = [];
+  }
+  if (!Array.isArray(liveTx)) liveTx = [];
 }
 
 function queueWrite() {
   writeQueue = writeQueue
     .then(() => fs.promises.writeFile(DATA_FILE, JSON.stringify(liveState, null, 2), 'utf8'))
     .catch(err => console.error('[StockMap] Write error:', err));
+}
+
+function queueTxWrite() {
+  txWriteQueue = txWriteQueue
+    .then(() => fs.promises.writeFile(TX_FILE, JSON.stringify(liveTx, null, 2), 'utf8'))
+    .catch(err => console.error('[StockMap] TX write error:', err));
 }
 
 // ── Patch ─────────────────────────────────────────────────────────────────────
@@ -154,6 +181,13 @@ function applyPatch(patch) {
     Object.entries(del).forEach(([pk,ids]) => { if(s.mapRooms[pk]) ids.forEach(id=>delete s.mapRooms[pk][id]); });
     Object.entries(set).forEach(([pk,rm]) => { if(!s.mapRooms[pk]) s.mapRooms[pk]={}; Object.assign(s.mapRooms[pk],rm); });
   }
+}
+
+function applyTxPatch(patch) {
+  const { append=[], update=[], delete:del=[] } = patch;
+  del.forEach(id => { const i=liveTx.findIndex(x=>x.id===id); if(i!==-1) liveTx.splice(i,1); });
+  append.forEach(tx => liveTx.push(tx));
+  update.forEach(tx => { const i=liveTx.findIndex(x=>x.id===tx.id); if(i!==-1) liveTx[i]=tx; });
 }
 
 // ── Image helpers ─────────────────────────────────────────────────────────────
@@ -268,8 +302,28 @@ const server = http.createServer(async (req, res) => {
         if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
         const data = await readBodyJSON(req);
         if (!data.locations||!data.items||!data.mapRooms) { json(400,{error:'Invalid'}); return; }
+        delete data.transactions; // transactions are never part of state
         liveState = data;
         queueWrite();
+        json(200, { ok:true });
+        return;
+      }
+
+      // ── Transactions (read) ──
+      if (method === 'GET' && p === '/api/transactions') {
+        await ensureTxLoaded();
+        json(200, liveTx);
+        return;
+      }
+
+      // ── Transaction patch (write, admin only) ──
+      // Body: { append?: [...], update?: [...], delete?: [...] }
+      if (method === 'POST' && p === '/api/transactions') {
+        if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
+        await ensureTxLoaded();
+        const patch = await readBodyJSON(req);
+        applyTxPatch(patch);
+        queueTxWrite();
         json(200, { ok:true });
         return;
       }
@@ -363,7 +417,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`║  Admin:    ${ADMIN_USER} / ${ADMIN_PASS.replace(/./g,'*')}${''.padEnd(Math.max(0,20-ADMIN_USER.length-ADMIN_PASS.length))}  ║`);
   console.log(`║  Guest:    ${GUEST_USER} / ${GUEST_PASS.replace(/./g,'*')}${''.padEnd(Math.max(0,20-GUEST_USER.length-GUEST_PASS.length))}  ║`);
   console.log('╠══════════════════════════════════════════════╣');
-  console.log(`║  Data:     stock.json                        ║`);
+  console.log(`║  Data:     stock.json / transactions.json    ║`);
   console.log(`║  Images:   images/                           ║`);
   console.log('╚══════════════════════════════════════════════╝\n');
   console.log('Change credentials with env vars: ADMIN_USER ADMIN_PASS GUEST_USER GUEST_PASS\n');

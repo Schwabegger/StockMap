@@ -422,11 +422,25 @@
     display: none; align-items: center; justify-content: center; flex-direction: column;
   }
   #photoLightbox.open { display: flex; }
+  #lbImgWrap {
+    position: relative;
+    overflow: hidden;
+    max-width: min(92vw, 900px);
+    max-height: 78vh;
+    border-radius: 10px;
+    cursor: zoom-in;
+  }
+  #lbImgWrap.zoomed { cursor: grab; }
+  #lbImgWrap.zoomed.dragging { cursor: grabbing; }
   #photoLightbox img {
+    display: block;
     max-width: min(92vw, 900px); max-height: 78vh;
     object-fit: contain; border-radius: 10px; user-select: none;
-    touch-action: pinch-zoom;
+    touch-action: none;
+    transform-origin: 0 0;
+    transition: transform 0.1s ease;
   }
+  #photoLightbox img.no-transition { transition: none; }
   .lightbox-controls {
     display: flex; align-items: center; gap: 12px; margin-top: 14px; flex-wrap: wrap; justify-content: center;
   }
@@ -790,6 +804,175 @@
   }
   .delete-btn:hover { color: var(--accent3); }
 
+  /* ── Log view ── */
+  #logView {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .log-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .log-toolbar select, .log-toolbar input {
+    padding: 7px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .85rem;
+    outline: none;
+  }
+
+  .log-toolbar select:focus, .log-toolbar input:focus { border-color: var(--accent); }
+
+  .overdue-banner {
+    background: rgba(255,107,107,.1);
+    border: 1px solid rgba(255,107,107,.4);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: .85rem;
+  }
+
+  .overdue-banner strong { color: var(--accent3); }
+
+  .tx-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .tx-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .tx-card.overdue { border-color: rgba(255,107,107,.5); background: rgba(255,107,107,.04); }
+  .tx-card.returned { opacity: .55; }
+
+  .tx-icon {
+    font-size: 1.4rem;
+    flex-shrink: 0;
+    width: 36px;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .tx-body { flex: 1; min-width: 0; }
+
+  .tx-title {
+    font-size: .9rem;
+    font-weight: 700;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .tx-meta {
+    font-size: .75rem;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .tx-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: .68rem;
+    font-weight: 700;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: .03em;
+  }
+
+  .tx-badge.relocation { background: rgba(71,200,255,.15); color: var(--accent2); border: 1px solid rgba(71,200,255,.3); }
+  .tx-badge.loan { background: rgba(232,255,71,.12); color: var(--accent); border: 1px solid rgba(232,255,71,.3); }
+  .tx-badge.permanent { background: rgba(160,100,255,.15); color: #b57eff; border: 1px solid rgba(160,100,255,.3); }
+  .tx-badge.overdue { background: rgba(255,107,107,.15); color: var(--accent3); border: 1px solid rgba(255,107,107,.35); }
+  .tx-badge.returned { background: rgba(100,200,100,.12); color: #6ec96e; border: 1px solid rgba(100,200,100,.25); }
+
+  .tx-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+  /* ── Loan modal ── */
+  #loanModal {
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: #0009;
+  }
+  #loanModal.visible { display: flex; }
+
+  .loan-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 26px;
+    width: 400px;
+    max-width: calc(100vw - 32px);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 16px 48px #000c;
+  }
+
+  .loan-box h3 { font-size: 1rem; font-weight: 800; }
+
+  .loan-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .loan-field label {
+    font-size: .72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  .loan-field input, .loan-field select {
+    padding: 9px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: .9rem;
+    outline: none;
+    transition: border-color .15s;
+  }
+
+  .loan-field input:focus, .loan-field select:focus { border-color: var(--accent); }
+
+  .loan-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: .88rem;
+    cursor: pointer;
+  }
+
+  .loan-checkbox-row input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+
+  .loan-row { display: flex; gap: 8px; }
+
   /* ── Context menu ── */
   #ctxMenu {
     position: fixed;
@@ -932,6 +1115,7 @@
     <button class="tab active" onclick="switchTab('search')">🔍 Items</button>
     <button class="tab" onclick="switchTab('map')">🗺 Map</button>
     <button class="tab" onclick="switchTab('manage')">⚙️ Manage</button>
+    <button class="tab" onclick="switchTab('log')" id="logTab">📋 Log</button>
   </div>
 </header>
 
@@ -994,6 +1178,32 @@
       </div>
       <!-- Room photos shown when inside a location -->
       <div id="mapLocPhotos" style="overflow-y:auto;flex-shrink:0;max-height:160px"></div>
+    </div>
+
+    <!-- LOG VIEW -->
+    <div class="view" id="logView">
+      <div id="overdueSection" style="display:none" class="overdue-banner">
+        <strong>⚠️ Overdue loans:</strong> <span id="overdueCount"></span> item(s) past their expected return date.
+      </div>
+      <div class="log-toolbar">
+        <select id="logFilterType" onchange="renderLog()">
+          <option value="">All types</option>
+          <option value="relocation">Relocations</option>
+          <option value="loan">Loans</option>
+        </select>
+        <select id="logFilterItem" onchange="renderLog()">
+          <option value="">All items</option>
+        </select>
+        <input type="text" id="logSearch" placeholder="Search person, note…" oninput="renderLog()" style="flex:1;min-width:120px">
+        <label class="loan-checkbox-row" style="white-space:nowrap">
+          <input type="checkbox" id="logHideReturned" onchange="renderLog()"> Hide returned
+        </label>
+        <button id="logRelocBtn" class="btn btn-outline" style="white-space:nowrap;display:none" onclick="openRelocModal(null)">📦 Log Relocation</button>
+        <button id="logLoanBtn" class="btn btn-accent" style="white-space:nowrap;display:none" onclick="openLoanModal(null)">📤 Log Loan</button>
+      </div>
+      <div class="tx-list" id="txList">
+        <div class="empty-state"><div class="big">📋</div><strong>No transactions yet</strong><p>Relocations and loans will appear here.</p></div>
+      </div>
     </div>
 
     <!-- MANAGE VIEW -->
@@ -1159,7 +1369,9 @@
 <!-- Photo lightbox -->
 <div id="photoLightbox" onclick="lbClickOutside(event)">
   <button class="lb-close" onclick="closeLightbox()">✕</button>
-  <img id="lbImg" src="" alt="">
+  <div id="lbImgWrap">
+    <img id="lbImg" src="" alt="">
+  </div>
   <div class="lightbox-controls">
     <button class="lb-btn" onclick="lbPrev()">← Prev</button>
     <span class="lb-counter" id="lbCounter"></span>
@@ -1184,6 +1396,8 @@ let state = {
   mapRooms: {}
 };
 
+let transactions = []; // loaded separately from /api/transactions
+
 // ── Storage backend: server only ──────────────────────────────────────────────
 const API = '/api';
 let saveDebounceTimer = null;
@@ -1207,6 +1421,13 @@ async function loadState() {
   if (!state.items)     state.items     = [];
   lastSavedState = deepClone(state);
   console.log(`[StockMap] Loaded: ${state.locations.length} locations, ${state.items.length} items`);
+}
+
+async function loadTransactions() {
+  const r = await apiFetch(API + '/transactions');
+  if (!r.ok) return;
+  transactions = await r.json();
+  if (!Array.isArray(transactions)) transactions = [];
 }
 
 // Build a minimal patch from what changed since last save
@@ -1282,6 +1503,30 @@ async function _doSave() {
   });
   if (!r.ok) throw new Error(await r.text());
   lastSavedState = deepClone(state);
+}
+
+async function appendTransaction(tx) {
+  transactions.push(tx);
+  await apiFetch(API + '/transactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ append: [tx] })
+  }).catch(console.error);
+  updateLogBadge();
+}
+
+function updateLogBadge() {
+  const now = new Date();
+  const overdueCount = transactions.filter(tx =>
+    tx.type==='loan' && !tx.permanent && !tx.returned &&
+    tx.returnDate && new Date(tx.returnDate) < now
+  ).length;
+  const logTabBtn = document.getElementById('logTab');
+  if (logTabBtn) {
+    logTabBtn.textContent = overdueCount > 0 ? `📋 Log ⚠️${overdueCount}` : '📋 Log';
+    logTabBtn.style.color = overdueCount > 0 ? 'var(--accent3)' : '';
+    logTabBtn.style.borderColor = overdueCount > 0 ? 'var(--accent3)' : '';
+  }
 }
 
 function uid() { return Math.random().toString(36).slice(2,9); }
@@ -1361,10 +1606,10 @@ function switchTab(tab) {
   currentTab = tab;
   // Desktop tabs
   document.querySelectorAll('.tab').forEach((t,i)=>{
-    t.classList.toggle('active', ['search','map','manage'][i]===tab);
+    t.classList.toggle('active', ['search','map','manage','log'][i]===tab);
   });
   // Mobile nav
-  ['search','map','manage'].forEach(t => {
+  ['search','map','manage','log'].forEach(t => {
     const btn = document.getElementById('mnav-'+t);
     if (btn) btn.classList.toggle('active', t===tab);
   });
@@ -1383,6 +1628,7 @@ function switchTab(tab) {
 
   if (tab==='map') renderMap();
   if (tab==='manage') renderManage();
+  if (tab==='log') renderLog();
 }
 
 function mobileSwitchTab(tab) { switchTab(tab); }
@@ -1518,7 +1764,13 @@ function renderItemDetail(id) {
         <div class="detail-total">Total in stock: <strong style="color:var(--accent)">${total} units</strong></div>
         ${item.category?`<span class="tag">${item.category}</span>`:''}
       </div>
-      <button class="btn btn-outline" style="margin-left:auto" onclick="editItem('${item.id}')">✏️ Edit</button>
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+        ${window.__authRole==='admin' ? `
+        <button class="btn btn-outline" style="font-size:.8rem;padding:7px 12px" onclick="openRelocModal('${item.id}')">📦 Relocation</button>
+        <button class="btn btn-outline" style="font-size:.8rem;padding:7px 12px" onclick="openLoanModal('${item.id}')">📤 Loan</button>
+        ` : ''}
+        <button class="btn btn-outline" onclick="editItem('${item.id}')">✏️ Edit</button>
+      </div>
     </div>
 
     <p class="section-title">Photos</p>
@@ -3137,8 +3389,11 @@ async function renderPhotoStrip(type, id, container, editable) {
     if (r.ok) { const d = await r.json(); urls = d.urls || []; }
   } catch {}
 
+  // Store url list in a closure-captured variable so onclick doesn't need to embed JSON in HTML
+  const stripId = `strip-${type}-${id}-${Date.now()}`;
+  window[stripId] = urls;
   const thumbs = urls.map((url, i) => `
-    <div class="photo-thumb" onclick="openLightboxURLs(${JSON.stringify(urls)},${i},'${type}','${id}')">
+    <div class="photo-thumb" onclick="openLightboxURLs(window['${stripId}'],${i},'${type}','${id}')">
       <img src="${url}" loading="lazy" alt="photo ${i+1}" crossorigin="anonymous">
       ${editable ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${url.split('/').pop()}')" title="Delete">✕</button>` : ''}
     </div>`).join('');
@@ -3174,6 +3429,32 @@ async function deletePhotoURL(type, id, filename) {
 // ── Lightbox (URL-based) ──────────────────────────────────────────────────────
 let _lbUrls = [], _lbType = '', _lbId = '';
 
+// Zoom state
+let _lbZoom = 1, _lbPanX = 0, _lbPanY = 0;
+let _lbDragging = false, _lbDragStartX = 0, _lbDragStartY = 0, _lbPanStartX = 0, _lbPanStartY = 0;
+const LB_ZOOM_MIN = 1, LB_ZOOM_MAX = 8;
+
+function lbResetZoom() {
+  _lbZoom = 1; _lbPanX = 0; _lbPanY = 0;
+  lbApplyTransform(true);
+  const wrap = document.getElementById('lbImgWrap');
+  wrap.classList.remove('zoomed', 'dragging');
+}
+
+function lbApplyTransform(transition=false) {
+  const img = document.getElementById('lbImg');
+  img.classList.toggle('no-transition', !transition);
+  // Clamp pan so image stays visible
+  const wrap = document.getElementById('lbImgWrap');
+  const iw = wrap.offsetWidth, ih = wrap.offsetHeight;
+  const maxPanX = Math.max(0, iw * (_lbZoom - 1));
+  const maxPanY = Math.max(0, ih * (_lbZoom - 1));
+  _lbPanX = Math.max(-maxPanX, Math.min(0, _lbPanX));
+  _lbPanY = Math.max(-maxPanY, Math.min(0, _lbPanY));
+  img.style.transform = `translate(${_lbPanX}px,${_lbPanY}px) scale(${_lbZoom})`;
+  document.getElementById('lbImgWrap').classList.toggle('zoomed', _lbZoom > 1);
+}
+
 function openLightboxURLs(urls, index, type, id) {
   _lbUrls = urls; _lbType = type; _lbId = id; _lbIndex = index;
   _photoCtx = { type, id };
@@ -3185,14 +3466,19 @@ function openLightboxURLs(urls, index, type, id) {
 function updateLightbox() {
   document.getElementById('lbImg').src = _lbUrls[_lbIndex] || '';
   document.getElementById('lbCounter').textContent = `${_lbIndex+1} / ${_lbUrls.length}`;
+  lbResetZoom();
 }
+
 function closeLightbox() {
+  lbResetZoom();
   document.getElementById('photoLightbox').classList.remove('open');
   document.removeEventListener('keydown', lbKeyHandler);
 }
+
 function lbClickOutside(e) { if (e.target===document.getElementById('photoLightbox')) closeLightbox(); }
-function lbPrev() { _lbIndex=(_lbIndex-1+_lbUrls.length)%_lbUrls.length; updateLightbox(); }
-function lbNext() { _lbIndex=(_lbIndex+1)%_lbUrls.length; updateLightbox(); }
+function lbPrev() { if (_lbZoom > 1) return; _lbIndex=(_lbIndex-1+_lbUrls.length)%_lbUrls.length; updateLightbox(); }
+function lbNext() { if (_lbZoom > 1) return; _lbIndex=(_lbIndex+1)%_lbUrls.length; updateLightbox(); }
+
 async function lbDelete() {
   if (!guardEdit()) return;
   const url = _lbUrls[_lbIndex];
@@ -3203,19 +3489,109 @@ async function lbDelete() {
   _lbIndex = Math.min(_lbIndex, _lbUrls.length-1);
   updateLightbox();
 }
+
 function lbKeyHandler(e) {
-  if (e.key==='ArrowLeft') lbPrev();
-  if (e.key==='ArrowRight') lbNext();
-  if (e.key==='Escape') closeLightbox();
+  if (e.key==='ArrowLeft')  { lbPrev(); return; }
+  if (e.key==='ArrowRight') { lbNext(); return; }
+  if (e.key==='Escape')     { if (_lbZoom > 1) lbResetZoom(); else closeLightbox(); return; }
+  if (e.key==='+' || e.key==='=') { lbZoomBy(1.5, null, null); }
+  if (e.key==='-')                { lbZoomBy(1/1.5, null, null); }
+  if (e.key==='0')                { lbResetZoom(); }
 }
 
-let _lbSwipeX = null;
-document.getElementById('photoLightbox').addEventListener('touchstart', e => { _lbSwipeX=e.touches[0].clientX; },{passive:true});
+// Zoom around a point (cx, cy) in wrap-relative coords; null = center
+function lbZoomBy(factor, cx, cy) {
+  const wrap = document.getElementById('lbImgWrap');
+  if (cx === null) cx = wrap.offsetWidth / 2;
+  if (cy === null) cy = wrap.offsetHeight / 2;
+  const newZoom = Math.max(LB_ZOOM_MIN, Math.min(LB_ZOOM_MAX, _lbZoom * factor));
+  if (newZoom === _lbZoom) return;
+  // Adjust pan so zoom is centered on (cx, cy)
+  const scale = newZoom / _lbZoom;
+  _lbPanX = cx - scale * (cx - _lbPanX);
+  _lbPanY = cy - scale * (cy - _lbPanY);
+  _lbZoom = newZoom;
+  lbApplyTransform(false);
+}
+
+// Scroll-to-zoom on desktop
+document.getElementById('lbImgWrap').addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = document.getElementById('lbImgWrap').getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  lbZoomBy(e.deltaY < 0 ? 1.15 : 1/1.15, cx, cy);
+}, { passive: false });
+
+// Click to zoom in/out on desktop
+document.getElementById('lbImgWrap').addEventListener('click', e => {
+  if (_lbDragging) return; // was a drag, not a click
+  if (_lbZoom === 1) {
+    const rect = document.getElementById('lbImgWrap').getBoundingClientRect();
+    lbZoomBy(2, e.clientX - rect.left, e.clientY - rect.top);
+  } else {
+    lbResetZoom();
+  }
+});
+
+// Drag-to-pan
+document.getElementById('lbImgWrap').addEventListener('mousedown', e => {
+  if (_lbZoom <= 1) return;
+  e.preventDefault();
+  _lbDragging = false;
+  _lbDragStartX = e.clientX; _lbDragStartY = e.clientY;
+  _lbPanStartX = _lbPanX; _lbPanStartY = _lbPanY;
+  document.getElementById('lbImgWrap').classList.add('dragging');
+  const onMove = ev => {
+    const dx = ev.clientX - _lbDragStartX, dy = ev.clientY - _lbDragStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) _lbDragging = true;
+    _lbPanX = _lbPanStartX + dx; _lbPanY = _lbPanStartY + dy;
+    lbApplyTransform(false);
+  };
+  const onUp = () => {
+    document.getElementById('lbImgWrap').classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    // Let the click handler fire first, then reset _lbDragging
+    setTimeout(() => { _lbDragging = false; }, 0);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
+
+// Pinch-to-zoom + swipe on touch
+let _lbSwipeX = null, _lbPinchDist = null;
+document.getElementById('photoLightbox').addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    _lbPinchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    _lbSwipeX = null;
+  } else if (e.touches.length === 1 && _lbZoom <= 1) {
+    _lbSwipeX = e.touches[0].clientX;
+  }
+}, { passive: false });
+
+document.getElementById('photoLightbox').addEventListener('touchmove', e => {
+  if (e.touches.length === 2 && _lbPinchDist !== null) {
+    e.preventDefault();
+    const wrap = document.getElementById('lbImgWrap');
+    const rect = wrap.getBoundingClientRect();
+    const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+    const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+    const dist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    lbZoomBy(dist / _lbPinchDist, cx, cy);
+    _lbPinchDist = dist;
+  }
+}, { passive: false });
+
 document.getElementById('photoLightbox').addEventListener('touchend', e => {
-  if (_lbSwipeX===null) return;
-  const dx=e.changedTouches[0].clientX-_lbSwipeX; _lbSwipeX=null;
-  if (Math.abs(dx)>50) dx<0?lbNext():lbPrev();
-},{passive:true});
+  if (e.touches.length < 2) _lbPinchDist = null;
+  if (e.touches.length === 0 && _lbSwipeX !== null) {
+    const dx = e.changedTouches[0].clientX - _lbSwipeX;
+    _lbSwipeX = null;
+    if (Math.abs(dx) > 50) { dx < 0 ? lbNext() : lbPrev(); }
+  }
+}, { passive: true });
 
 // ── Room photos panel ─────────────────────────────────────────────────────────
 function renderMapLocationPhotos(locId) {
@@ -3228,6 +3604,281 @@ function renderMapLocationPhotos(locId) {
       <p class="section-title" style="margin:0 0 8px">📷 Room photos — ${loc.name}</p>
       ${photoStripPlaceholder('locations', locId, true)}
     </div>`;
+}
+
+// ─── TRANSACTION LOG ─────────────────────────────────────────────────────────
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+}
+
+function isOverdue(tx) {
+  if (tx.type !== 'loan' || tx.permanent || tx.returned || !tx.returnDate) return false;
+  return new Date(tx.returnDate) < new Date();
+}
+
+function renderLog() {
+  // Show admin-only buttons
+  const isAdmin = window.__authRole === 'admin';
+  const rb = document.getElementById('logRelocBtn'); if (rb) rb.style.display = isAdmin ? '' : 'none';
+  const lb = document.getElementById('logLoanBtn');  if (lb) lb.style.display = isAdmin ? '' : 'none';
+
+  const txs = transactions;
+  const typeFilter    = document.getElementById('logFilterType')?.value || '';
+  const itemFilter    = document.getElementById('logFilterItem')?.value || '';
+  const search        = (document.getElementById('logSearch')?.value || '').toLowerCase();
+  const hideReturned  = document.getElementById('logHideReturned')?.checked;
+
+  // Populate item filter
+  const itemSel = document.getElementById('logFilterItem');
+  if (itemSel) {
+    const curVal = itemSel.value;
+    itemSel.innerHTML = '<option value="">All items</option>' +
+      state.items.map(it => `<option value="${it.id}" ${curVal===it.id?'selected':''}>${it.emoji||'📦'} ${it.name}</option>`).join('');
+    itemSel.value = curVal;
+  }
+
+  // Overdue section
+  const overdueList = txs.filter(isOverdue);
+  const overdueSection = document.getElementById('overdueSection');
+  if (overdueSection) {
+    overdueSection.style.display = overdueList.length ? '' : 'none';
+    const el = document.getElementById('overdueCount');
+    if (el) el.textContent = overdueList.length;
+  }
+  updateLogBadge();
+
+  let filtered = [...txs].reverse(); // newest first
+  if (typeFilter) filtered = filtered.filter(tx => tx.type === typeFilter);
+  if (itemFilter) filtered = filtered.filter(tx => tx.itemId === itemFilter);
+  if (hideReturned) filtered = filtered.filter(tx => !(tx.type==='loan' && tx.returned));
+  if (search) filtered = filtered.filter(tx => {
+    const item = state.items.find(i=>i.id===tx.itemId);
+    const blob = [
+      item?.name||'', tx.borrower||'', tx.by||'', tx.note||'',
+      getLocation(tx.fromLocationId)?.name||'', getLocation(tx.toLocationId)?.name||''
+    ].join(' ').toLowerCase();
+    return blob.includes(search);
+  });
+
+  const el = document.getElementById('txList');
+  if (!el) return;
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty-state"><div class="big">📋</div><strong>No transactions</strong><p>No entries match the current filter.</p></div>`;
+    return;
+  }
+
+  el.innerHTML = filtered.map(tx => {
+    const item   = state.items.find(i=>i.id===tx.itemId);
+    const iname  = item ? `${item.emoji||'📦'} ${item.name}` : `(deleted item)`;
+    const overdue = isOverdue(tx);
+    let cardClass = 'tx-card';
+    if (overdue) cardClass += ' overdue';
+    if (tx.type==='loan' && tx.returned) cardClass += ' returned';
+
+    let badge = tx.type === 'relocation'
+      ? `<span class="tx-badge relocation">RELOCATION</span>`
+      : tx.permanent
+        ? `<span class="tx-badge permanent">PERMANENT</span>`
+        : tx.returned
+          ? `<span class="tx-badge returned">RETURNED</span>`
+          : overdue
+            ? `<span class="tx-badge overdue">OVERDUE</span>`
+            : `<span class="tx-badge loan">LOAN</span>`;
+
+    let details = '';
+    if (tx.type === 'relocation') {
+      const from = tx.fromLocationId ? getLocationPath(tx.fromLocationId) : 'top level';
+      const to   = tx.toLocationId   ? getLocationPath(tx.toLocationId)   : 'top level';
+      details = `<span>from <strong>${from}</strong></span><span>→ <strong>${to}</strong></span>`;
+      if (tx.by) details += `<span>by ${tx.by}</span>`;
+    } else {
+      const from = tx.fromLocationId ? getLocationPath(tx.fromLocationId) : '—';
+      details = `<span>borrower: <strong>${tx.borrower||'—'}</strong></span>`;
+      details += `<span>from: ${from}</span>`;
+      if (tx.returnDate && !tx.permanent) details += `<span>return by: <strong>${fmtDate(tx.returnDate)}</strong></span>`;
+      if (tx.by) details += `<span>by: ${tx.by}</span>`;
+      if (tx.note) details += `<span>note: ${tx.note}</span>`;
+    }
+
+    const actions = isAdmin ? `
+      <div class="tx-actions">
+        ${tx.type==='loan' && !tx.returned && !tx.permanent ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:.75rem" onclick="markReturned('${tx.id}')">✓ Returned</button>` : ''}
+        <button class="delete-btn" onclick="deleteTransaction('${tx.id}')" title="Delete entry">🗑</button>
+      </div>` : '';
+
+    return `<div class="${cardClass}" id="tx-${tx.id}">
+      <div class="tx-icon">${tx.type==='relocation'?'📦':'📤'}</div>
+      <div class="tx-body">
+        <div class="tx-title">${iname} &times;${tx.qty||1} ${badge}</div>
+        <div class="tx-meta">${details}</div>
+        <div class="tx-meta" style="margin-top:3px;opacity:.6">${fmtDate(tx.date)}</div>
+      </div>
+      ${actions}
+    </div>`;
+  }).join('');
+}
+
+async function markReturned(txId) {
+  const tx = transactions.find(t=>t.id===txId);
+  if (!tx) return;
+  tx.returned = true;
+  tx.returnedDate = new Date().toISOString();
+  await apiFetch(API + '/transactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ update: [tx] })
+  }).catch(console.error);
+  renderLog();
+  showToast('Marked as returned');
+}
+
+async function deleteTransaction(txId) {
+  if (!confirm('Delete this log entry?')) return;
+  transactions = transactions.filter(t=>t.id!==txId);
+  await apiFetch(API + '/transactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ delete: [txId] })
+  }).catch(console.error);
+  renderLog();
+}
+
+// ── Relocation dialog ─────────────────────────────────────────────────────────
+let _relocModal = null;
+
+function openRelocModal(prefilledItemId) {
+  if (window.__authRole !== 'admin') return;
+  // Build a simple inline modal for logging a relocation
+  const modal = document.createElement('div');
+  modal.id = 'relocModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;background:#0009';
+
+  const allLocs = state.locations.map(l =>
+    `<option value="${l.id}">${getLocationPath(l.id)}</option>`).join('');
+  const allItems = state.items.map(it =>
+    `<option value="${it.id}" ${it.id===prefilledItemId?'selected':''}>${it.emoji||'📦'} ${it.name}</option>`).join('');
+
+  modal.innerHTML = `<div class="loan-box">
+    <h3>📦 Log Relocation</h3>
+    <div class="loan-field"><label>Item</label>
+      <select id="relocItemSel">${allItems}</select></div>
+    <div class="loan-field"><label>Quantity</label>
+      <input type="number" id="relocQty" min="1" value="1"></div>
+    <div class="loan-field"><label>From Location</label>
+      <select id="relocFrom"><option value="">— select —</option>${allLocs}</select></div>
+    <div class="loan-field"><label>To Location</label>
+      <select id="relocTo"><option value="">— select —</option>${allLocs}</select></div>
+    <div class="loan-field"><label>Relocated by (optional)</label>
+      <input type="text" id="relocBy" placeholder="e.g. Jane Smith" autocomplete="off"></div>
+    <div class="loan-field"><label>Note (optional)</label>
+      <input type="text" id="relocNote" placeholder="" autocomplete="off"></div>
+    <div class="loan-row">
+      <button class="btn btn-accent" style="flex:1" onclick="confirmReloc()">Log Relocation</button>
+      <button class="btn btn-outline" onclick="closeRelocModal()">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  _relocModal = modal;
+}
+
+function closeRelocModal() {
+  if (_relocModal) { _relocModal.remove(); _relocModal = null; }
+}
+
+async function confirmReloc() {
+  const itemId = document.getElementById('relocItemSel')?.value;
+  const qty    = parseInt(document.getElementById('relocQty')?.value) || 1;
+  const from   = document.getElementById('relocFrom')?.value || null;
+  const to     = document.getElementById('relocTo')?.value   || null;
+  const by     = document.getElementById('relocBy')?.value.trim()   || '';
+  const note   = document.getElementById('relocNote')?.value.trim() || '';
+
+  if (!itemId) { alert('Select an item'); return; }
+  if (!from && !to) { alert('Select at least a from or to location'); return; }
+
+  const tx = {
+    id: uid(), type: 'relocation',
+    date: new Date().toISOString(),
+    itemId, qty, fromLocationId: from||null, toLocationId: to||null,
+    by: by || undefined, note: note || undefined
+  };
+  await appendTransaction(tx);
+  closeRelocModal();
+  if (currentTab === 'log') renderLog();
+  showToast('Relocation logged');
+}
+
+// ── Loan modal ────────────────────────────────────────────────────────────────
+function openLoanModal(prefilledItemId) {
+  if (window.__authRole !== 'admin') return;
+  const sel = document.getElementById('loanItemSel');
+  sel.innerHTML = state.items.map(it =>
+    `<option value="${it.id}" ${it.id===prefilledItemId?'selected':''}>${it.emoji||'📦'} ${it.name}</option>`).join('');
+
+  const fromSel = document.getElementById('loanFromLoc');
+  fromSel.innerHTML = '<option value="">— select —</option>' +
+    state.locations.map(l => `<option value="${l.id}">${getLocationPath(l.id)}</option>`).join('');
+
+  // Auto-populate from location based on selected item's stock
+  function updateFromLoc() {
+    const item = state.items.find(i=>i.id===sel.value);
+    if (!item) return;
+    // Pre-select first stock location
+    const first = item.stock.find(s=>s.qty>0);
+    if (first) fromSel.value = first.locationId;
+  }
+  sel.onchange = updateFromLoc;
+  updateFromLoc();
+
+  document.getElementById('loanPermanent').checked = false;
+  document.getElementById('loanReturnWrap').style.display = '';
+  document.getElementById('loanReturnDate').value = '';
+  document.getElementById('loanBorrower').value = '';
+  document.getElementById('loanBy').value = '';
+  document.getElementById('loanNote').value = '';
+  document.getElementById('loanQty').value = '1';
+  document.getElementById('loanModal').classList.add('visible');
+}
+
+function closeLoanModal() {
+  document.getElementById('loanModal').classList.remove('visible');
+}
+
+function toggleLoanPermanent() {
+  const perm = document.getElementById('loanPermanent').checked;
+  document.getElementById('loanReturnWrap').style.display = perm ? 'none' : '';
+}
+
+async function confirmLoan() {
+  const itemId   = document.getElementById('loanItemSel').value;
+  const fromLoc  = document.getElementById('loanFromLoc').value || null;
+  const qty      = parseInt(document.getElementById('loanQty').value) || 1;
+  const borrower = document.getElementById('loanBorrower').value.trim();
+  const by       = document.getElementById('loanBy').value.trim();
+  const permanent = document.getElementById('loanPermanent').checked;
+  const returnDate = permanent ? null : (document.getElementById('loanReturnDate').value || null);
+  const note     = document.getElementById('loanNote').value.trim();
+
+  if (!itemId)   { alert('Select an item'); return; }
+  if (!borrower) { alert('Enter a borrower name'); return; }
+
+  const tx = {
+    id: uid(), type: 'loan',
+    date: new Date().toISOString(),
+    itemId, qty, fromLocationId: fromLoc||null,
+    borrower, permanent,
+    returnDate: returnDate || null,
+    returned: false,
+    by: by || undefined,
+    note: note || undefined
+  };
+  await appendTransaction(tx);
+  closeLoanModal();
+  if (currentTab === 'log') renderLog();
+  showToast(`Loan to ${borrower} logged`);
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
@@ -3245,6 +3896,8 @@ function renderMapLocationPhotos(locId) {
   renderItemList();
   renderStockEntries();
   renderManage();
+  // Load transactions in background — non-critical for initial render
+  loadTransactions().then(() => updateLogBadge()).catch(console.error);
 })();
 
 // Mouse back button (MB4) = navigate up one level on the map
@@ -3265,6 +3918,48 @@ const _resizeObs = new ResizeObserver(() => {
 });
 _resizeObs.observe(canvas);
 </script>
+<!-- Loan modal -->
+<div id="loanModal" onclick="if(event.target===this)closeLoanModal()">
+  <div class="loan-box">
+    <h3>📤 Log Loan</h3>
+    <div class="loan-field">
+      <label>Item</label>
+      <select id="loanItemSel"></select>
+    </div>
+    <div class="loan-field">
+      <label>From Location</label>
+      <select id="loanFromLoc"></select>
+    </div>
+    <div class="loan-field">
+      <label>Quantity</label>
+      <input type="number" id="loanQty" min="1" value="1">
+    </div>
+    <div class="loan-field">
+      <label>Borrower Name</label>
+      <input type="text" id="loanBorrower" placeholder="e.g. John Doe" autocomplete="off">
+    </div>
+    <div class="loan-field">
+      <label>Given out by (optional)</label>
+      <input type="text" id="loanBy" placeholder="e.g. Jane Smith" autocomplete="off">
+    </div>
+    <label class="loan-checkbox-row">
+      <input type="checkbox" id="loanPermanent" onchange="toggleLoanPermanent()"> Permanent (they keep it)
+    </label>
+    <div id="loanReturnWrap" class="loan-field">
+      <label>Expected Return Date (optional)</label>
+      <input type="date" id="loanReturnDate">
+    </div>
+    <div class="loan-field">
+      <label>Note (optional)</label>
+      <input type="text" id="loanNote" placeholder="e.g. for the workshop" autocomplete="off">
+    </div>
+    <div class="loan-row">
+      <button class="btn btn-accent" style="flex:1" onclick="confirmLoan()">Log Loan</button>
+      <button class="btn btn-outline" onclick="closeLoanModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Mobile bottom navigation -->
 <nav class="mobile-nav" id="mobileNav">
   <button class="mobile-nav-btn active" id="mnav-search" onclick="mobileSwitchTab('search')">
@@ -3275,6 +3970,9 @@ _resizeObs.observe(canvas);
   </button>
   <button class="mobile-nav-btn" id="mnav-manage" onclick="mobileSwitchTab('manage')">
     <span class="nav-icon">⚙️</span>Manage
+  </button>
+  <button class="mobile-nav-btn" id="mnav-log" onclick="mobileSwitchTab('log')">
+    <span class="nav-icon">📋</span>Log
   </button>
 </nav>
 
