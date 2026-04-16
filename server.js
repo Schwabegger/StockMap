@@ -62,6 +62,7 @@ const GUEST_PASS = process.env.GUEST_PASS         || 'readonly';
 
 const DATA_FILE  = path.join(__dirname, 'stock.json');
 const TX_FILE    = path.join(__dirname, 'transactions.json');
+const CAT_FILE   = path.join(__dirname, 'categories.json');
 const HTML_FILE  = path.join(__dirname, 'inventory.html');
 const IMG_DIR    = path.join(__dirname, 'images');
 
@@ -115,10 +116,12 @@ function requireAuth(req, res) {
 }
 
 // ── In-memory state ───────────────────────────────────────────────────────────
-let liveState  = null;
-let liveTx     = null;   // transactions live separately
-let writeQueue = Promise.resolve();
+let liveState    = null;
+let liveTx       = null;   // transactions live separately
+let liveCats     = null;   // categories live separately
+let writeQueue   = Promise.resolve();
 let txWriteQueue = Promise.resolve();
+let catWriteQueue = Promise.resolve();
 
 async function ensureLoaded() {
   if (liveState) return;
@@ -131,13 +134,34 @@ async function ensureLoaded() {
   if (!liveState.mapRooms)  liveState.mapRooms  = {};
   if (!liveState.locations) liveState.locations = [];
   if (!liveState.items)     liveState.items     = [];
-  // Migrate: if old stock.json has transactions, move them out
+  // Migrate: transactions embedded in stock.json → transactions.json
   if (liveState.transactions) {
     liveTx = liveState.transactions;
     delete liveState.transactions;
     queueWrite();
     queueTxWrite();
   }
+  // Migrate: categories embedded in stock.json → categories.json
+  if (liveState.categories) {
+    await ensureCatsLoaded(); // may already have cats from file
+    if (!liveCats.length && liveState.categories.length) {
+      liveCats = liveState.categories;
+      queueCatWrite();
+    }
+    delete liveState.categories;
+    queueWrite();
+  }
+}
+
+async function ensureCatsLoaded() {
+  if (liveCats) return;
+  try {
+    const raw = await fs.promises.readFile(CAT_FILE, 'utf8');
+    liveCats = JSON.parse(raw);
+  } catch {
+    liveCats = [];
+  }
+  if (!Array.isArray(liveCats)) liveCats = [];
 }
 
 async function ensureTxLoaded() {
@@ -161,6 +185,12 @@ function queueTxWrite() {
   txWriteQueue = txWriteQueue
     .then(() => fs.promises.writeFile(TX_FILE, JSON.stringify(liveTx, null, 2), 'utf8'))
     .catch(err => console.error('[StockMap] TX write error:', err));
+}
+
+function queueCatWrite() {
+  catWriteQueue = catWriteQueue
+    .then(() => fs.promises.writeFile(CAT_FILE, JSON.stringify(liveCats, null, 2), 'utf8'))
+    .catch(err => console.error('[StockMap] Categories write error:', err));
 }
 
 // ── Patch ─────────────────────────────────────────────────────────────────────
@@ -302,9 +332,31 @@ const server = http.createServer(async (req, res) => {
         if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
         const data = await readBodyJSON(req);
         if (!data.locations||!data.items||!data.mapRooms) { json(400,{error:'Invalid'}); return; }
-        delete data.transactions; // transactions are never part of state
+        delete data.transactions; // transactions live separately
+        delete data.categories;   // categories live separately
         liveState = data;
         queueWrite();
+        json(200, { ok:true });
+        return;
+      }
+
+      // ── Categories (read) ──
+      if (method === 'GET' && p === '/api/categories') {
+        await ensureCatsLoaded();
+        json(200, liveCats);
+        return;
+      }
+
+      // ── Category patch (write, admin only) ──
+      // Body: { set?: [...], delete?: [...] }
+      if (method === 'POST' && p === '/api/categories') {
+        if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
+        await ensureCatsLoaded();
+        const patch = await readBodyJSON(req);
+        const { set=[], delete:del=[] } = patch;
+        del.forEach(id => { const i=liveCats.findIndex(x=>x.id===id); if(i!==-1) liveCats.splice(i,1); });
+        set.forEach(cat => { const i=liveCats.findIndex(x=>x.id===cat.id); i!==-1 ? liveCats[i]=cat : liveCats.push(cat); });
+        queueCatWrite();
         json(200, { ok:true });
         return;
       }

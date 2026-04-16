@@ -1270,7 +1270,9 @@
           </div>
           <div class="form-row">
             <label>Category</label>
-            <input type="text" id="mItemCat" placeholder="e.g. Office Supplies">
+            <select id="mItemCatSel" style="width:100%">
+              <option value="">— none —</option>
+            </select>
           </div>
           <div class="form-row">
             <label>Emoji Icon</label>
@@ -1286,6 +1288,23 @@
             <button class="btn btn-outline" onclick="clearItemForm()">Clear</button>
           </div>
           <div id="editingLabel" style="font-size:.75rem;color:var(--muted);margin-top:8px;display:none"></div>
+        </div>
+
+        <div class="card">
+          <h3>🏷️ Categories</h3>
+          <p class="section-title">Category Tree</p>
+          <div id="categoryTree"></div>
+          <hr>
+          <p class="section-title">Add Category</p>
+          <div class="form-row">
+            <label>Name</label>
+            <input type="text" id="newCatName" placeholder="e.g. Food, Baking Ingredients">
+          </div>
+          <div class="form-row">
+            <label>Parent (optional)</label>
+            <select id="newCatParent"><option value="">— top level —</option></select>
+          </div>
+          <button class="btn btn-accent" style="width:100%;margin-top:4px" onclick="addCategory()">Add Category</button>
         </div>
 
         <div class="card">
@@ -1446,6 +1465,7 @@ async function apiFetch(url, opts={}) {
 let state = {
   locations: [],
   items: [],
+  categories: [],
   mapRooms: {}
 };
 
@@ -1464,16 +1484,21 @@ function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
 function guardEdit() { return true; }
 
 async function loadState() {
-  const r = await apiFetch(API + '/state');
-  if (r.status === 401) { window.location.reload(); return; }
-  if (!r.ok) throw new Error(`Server returned ${r.status}`);
-  const data = await r.json();
+  const [stateRes, catsRes] = await Promise.all([
+    apiFetch(API + '/state'),
+    apiFetch(API + '/categories')
+  ]);
+  if (stateRes.status === 401) { window.location.reload(); return; }
+  if (!stateRes.ok) throw new Error(`Server returned ${stateRes.status}`);
+  const data = await stateRes.json();
   state = data;
   if (!state.mapRooms)  state.mapRooms  = {};
   if (!state.locations) state.locations = [];
   if (!state.items)     state.items     = [];
+  state.categories = catsRes.ok ? await catsRes.json() : [];
+  if (!Array.isArray(state.categories)) state.categories = [];
   lastSavedState = deepClone(state);
-  console.log(`[StockMap] Loaded: ${state.locations.length} locations, ${state.items.length} items`);
+  console.log(`[StockMap] Loaded: ${state.locations.length} locations, ${state.items.length} items, ${state.categories.length} categories`);
 }
 
 async function loadTransactions() {
@@ -1483,7 +1508,7 @@ async function loadTransactions() {
   if (!Array.isArray(transactions)) transactions = [];
 }
 
-// Build a minimal patch from what changed since last save
+// Build a minimal patch from what changed since last save (items/locations/mapRooms only)
 function buildPatch() {
   const prev = lastSavedState || { locations: [], items: [], mapRooms: {} };
   const patch = {};
@@ -1541,9 +1566,13 @@ function buildPatch() {
   return patch;
 }
 
+let catDebounceTimer = null;
+
 function saveState() {
   clearTimeout(saveDebounceTimer);
   saveDebounceTimer = setTimeout(_doSave, 400);
+  clearTimeout(catDebounceTimer);
+  catDebounceTimer = setTimeout(_doSaveCats, 400);
 }
 
 async function _doSave() {
@@ -1556,6 +1585,26 @@ async function _doSave() {
   });
   if (!r.ok) throw new Error(await r.text());
   lastSavedState = deepClone(state);
+}
+
+async function _doSaveCats() {
+  const prev = (lastSavedState?.categories) || [];
+  const prevIds = new Set(prev.map(x => x.id));
+  const curIds  = new Set(state.categories.map(x => x.id));
+  const set = state.categories.filter(cat => {
+    const old = prev.find(x => x.id === cat.id);
+    return !old || JSON.stringify(old) !== JSON.stringify(cat);
+  });
+  const del = [...prevIds].filter(id => !curIds.has(id));
+  if (!set.length && !del.length) return;
+  const r = await apiFetch(API + '/categories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ set, delete: del })
+  });
+  if (!r.ok) throw new Error(await r.text());
+  // update lastSavedState categories slice
+  if (lastSavedState) lastSavedState.categories = deepClone(state.categories);
 }
 
 async function appendTransaction(tx) {
@@ -1759,7 +1808,7 @@ function renderItemList() {
   // Normal full list with search
   filtered = state.items.filter(i =>
     i.name.toLowerCase().includes(q) ||
-    (i.category||'').toLowerCase().includes(q)
+    getItemCategoryDisplay(i).toLowerCase().includes(q)
   );
   if (!filtered.length) {
     list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">No items found</div>';
@@ -1769,7 +1818,7 @@ function renderItemList() {
     <div class="item-card ${selectedItemId===item.id?'selected':''}" onclick="selectItem('${item.id}')">
       <span class="qty-badge">${getTotalQty(item)}</span>
       <div class="iname">${item.emoji||'📦'} ${item.name}</div>
-      <div class="imeta">${item.category||'Uncategorized'}</div>
+      <div class="imeta">${getItemCategoryDisplay(item)}</div>
     </div>
   `).join('');
 }
@@ -1806,7 +1855,7 @@ function renderItemDetail(id) {
     <div class="breadcrumb">
       <span style="color:var(--accent)">Items</span>
       <span class="sep">›</span>
-      <span>${item.category||'Uncategorized'}</span>
+      <span>${getItemCategoryDisplay(item)}</span>
       <span class="sep">›</span>
       <span style="color:var(--text)">${item.name}</span>
     </div>
@@ -1815,7 +1864,7 @@ function renderItemDetail(id) {
       <div>
         <div class="detail-title">${item.name}</div>
         <div class="detail-total">Total in stock: <strong style="color:var(--accent)">${total} units</strong></div>
-        ${item.category?`<span class="tag">${item.category}</span>`:''}
+        ${(item.categoryId||item.category)?`<span class="tag">${getItemCategoryDisplay(item)}</span>`:''}
       </div>
       <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
         ${window.__authRole==='admin' ? `
@@ -2897,7 +2946,7 @@ function renderQuickAddResults() {
 
   // Filter items; if empty query show all
   const matches = state.items.filter(i =>
-    !q || i.name.toLowerCase().includes(q) || (i.category||'').toLowerCase().includes(q)
+    !q || i.name.toLowerCase().includes(q) || getItemCategoryDisplay(i).toLowerCase().includes(q)
   ).slice(0, 8);
 
   if (!matches.length) {
@@ -2967,7 +3016,7 @@ function confirmQuickAdd() {
     }
   }
 
-  const newItem = { id: uid(), name, emoji, category: '', stock: [{ locationId: quickAddLocId, qty }] };
+  const newItem = { id: uid(), name, emoji, categoryId: null, stock: [{ locationId: quickAddLocId, qty }] };
   state.items.push(newItem);
   saveState();
   renderItemList();
@@ -3209,8 +3258,96 @@ let editingItemId = null;
 let stockEntries = [];
 
 function renderManage() {
+  renderCategoryTree();
+  populateCategorySelects();
   renderLocationTree();
   populateLocationSelects();
+}
+
+// ─── CATEGORIES ──────────────────────────────────────────────────────────────
+
+function getCategoryPath(id) {
+  if (!id) return '';
+  const cat = state.categories.find(c => c.id === id);
+  if (!cat) return '';
+  if (cat.parentId) return getCategoryPath(cat.parentId) + ' › ' + cat.name;
+  return cat.name;
+}
+
+function getItemCategoryDisplay(item) {
+  if (item.categoryId) {
+    const p = getCategoryPath(item.categoryId);
+    if (p) return p;
+  }
+  return item.category || 'Uncategorized';
+}
+
+function renderCategoryTree() {
+  const el = document.getElementById('categoryTree');
+  if (!el) return;
+  el.innerHTML = buildCatTree(null);
+}
+
+function buildCatTree(parentId) {
+  const cats = state.categories.filter(c => (c.parentId || null) === (parentId || null));
+  if (!cats.length) return '';
+  return cats.map(cat => {
+    const children = state.categories.filter(c => c.parentId === cat.id);
+    const usedBy = state.items.filter(i => i.categoryId === cat.id).length;
+    return `<div class="tree-node">
+      <div class="tree-header" onclick="toggleTree('ctree_${cat.id}', this)">
+        ${children.length ? `<span class="tree-toggle" id="ctog_${cat.id}">▶</span>` : '<span class="tree-toggle"></span>'}
+        <span class="tree-label">🏷️ ${cat.name}</span>
+        <span class="tree-count">${usedBy} item${usedBy!==1?'s':''}</span>
+        <button class="delete-btn" onclick="event.stopPropagation();deleteCategory('${cat.id}')">🗑</button>
+      </div>
+      ${children.length ? `<div class="tree-children" id="ctree_${cat.id}">${buildCatTree(cat.id)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function populateCategorySelects() {
+  const all = state.categories;
+  // item form select
+  const itemSel = document.getElementById('mItemCatSel');
+  if (itemSel) {
+    const cur = itemSel.value;
+    itemSel.innerHTML = '<option value="">— none —</option>' +
+      all.map(c => `<option value="${c.id}">${getCategoryPath(c.id)}</option>`).join('');
+    if (cur) itemSel.value = cur;
+  }
+  // new category parent select
+  const parentSel = document.getElementById('newCatParent');
+  if (parentSel) {
+    const cur = parentSel.value;
+    parentSel.innerHTML = '<option value="">— top level —</option>' +
+      all.map(c => `<option value="${c.id}">${getCategoryPath(c.id)}</option>`).join('');
+    if (cur) parentSel.value = cur;
+  }
+}
+
+function addCategory() {
+  if (!guardEdit()) return;
+  const name = document.getElementById('newCatName').value.trim();
+  const parentId = document.getElementById('newCatParent').value || null;
+  if (!name) { alert('Enter a category name'); return; }
+  state.categories.push({ id: uid(), name, parentId });
+  saveState();
+  document.getElementById('newCatName').value = '';
+  renderManage();
+}
+
+function deleteCategory(id) {
+  if (!guardEdit()) return;
+  const inUse = state.items.some(i => i.categoryId === id);
+  const hasChildren = state.categories.some(c => c.parentId === id);
+  if (inUse || hasChildren) {
+    alert('Cannot delete: category has items or sub-categories assigned to it.');
+    return;
+  }
+  state.categories = state.categories.filter(c => c.id !== id);
+  saveState();
+  renderManage();
 }
 
 function renderLocationTree() {
@@ -3268,16 +3405,25 @@ function addLocation() {
 function clearAllData() {
   if (!guardEdit()) return;
   if (!confirm('Delete ALL items, locations and map layouts?\n\nThis cannot be undone.')) return;
-  state.locations = [];
-  state.items     = [];
-  state.mapRooms  = {};
-  lastSavedState  = deepClone(state);
+  const oldCatIds = state.categories.map(c => c.id);
+  state.locations   = [];
+  state.items       = [];
+  state.categories  = [];
+  state.mapRooms    = {};
+  lastSavedState    = deepClone(state);
   // Force a full replace (a patch would produce nothing useful)
   apiFetch(API + '/state', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(state)
   }).catch(console.error);
+  if (oldCatIds.length) {
+    apiFetch(API + '/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ set: [], delete: oldCatIds })
+    }).catch(console.error);
+  }
   selectedItemId = null;
   mapStack = []; mapEditMode = false;
   document.getElementById('editMapBtn').textContent = '✏️ Edit Map';
@@ -3330,15 +3476,15 @@ function saveItem() {
   if (!guardEdit()) return;
   const name = document.getElementById('mItemName').value.trim();
   if (!name) { alert('Enter item name'); return; }
-  const cat = document.getElementById('mItemCat').value.trim();
+  const categoryId = document.getElementById('mItemCatSel').value || null;
   const emoji = document.getElementById('mItemEmoji').value.trim() || '📦';
   const stock = stockEntries.filter(e=>e.locationId);
 
   if (editingItemId) {
     const item = state.items.find(i=>i.id===editingItemId);
-    if (item) { item.name=name; item.category=cat; item.emoji=emoji; item.stock=stock; }
+    if (item) { item.name=name; item.categoryId=categoryId; item.emoji=emoji; item.stock=stock; }
   } else {
-    state.items.push({id:uid(), name, category:cat, emoji, stock});
+    state.items.push({id:uid(), name, categoryId, emoji, stock});
   }
   saveState();
   clearItemForm();
@@ -3349,7 +3495,7 @@ function saveItem() {
 function clearItemForm() {
   editingItemId = null;
   document.getElementById('mItemName').value = '';
-  document.getElementById('mItemCat').value = '';
+  document.getElementById('mItemCatSel').value = '';
   document.getElementById('mItemEmoji').value = '';
   stockEntries = [];
   renderStockEntries();
@@ -3363,7 +3509,7 @@ function editItem(id) {
   setTimeout(()=>{
     editingItemId = id;
     document.getElementById('mItemName').value = item.name;
-    document.getElementById('mItemCat').value = item.category||'';
+    document.getElementById('mItemCatSel').value = item.categoryId||'';
     document.getElementById('mItemEmoji').value = item.emoji||'';
     stockEntries = item.stock.map(s=>({...s}));
     renderStockEntries();
