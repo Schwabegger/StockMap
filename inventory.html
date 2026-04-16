@@ -415,6 +415,45 @@
   .photo-add-btn:hover { border-color: var(--accent2); color: var(--accent2); }
   .photo-add-btn .add-icon { font-size: 1.4rem; line-height: 1; }
 
+  /* Drag-and-drop upload overlay */
+  @keyframes drop-overlay-in {
+    from { opacity: 0; } to { opacity: 1; }
+  }
+  .drop-overlay {
+    position: absolute; inset: 0; z-index: 500;
+    background: rgba(255,255,255,0.13);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 2px dashed rgba(255,255,255,0.45);
+    border-radius: 12px;
+    display: none;
+    align-items: center; justify-content: center;
+    pointer-events: none;
+    animation: drop-overlay-in .12s ease;
+  }
+  .drop-overlay-inner {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.18);
+    border: 2px dashed rgba(255,255,255,0.7);
+    border-radius: 16px;
+    padding: 32px 48px;
+    color: #fff;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.9);
+    font-size: 1rem; font-weight: 600;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+  }
+  .drop-overlay-inner .drop-icon { font-size: 3rem; line-height: 1; }
+  .view { position: relative; }
+  .view.drag-active .drop-overlay { display: flex; }
+  .view.drag-blocked .drop-overlay-inner {
+    opacity: 0.6;
+  }
+  .view.drag-blocked .drop-overlay-inner::before {
+    content: '🚫';
+    font-size: 3rem; line-height: 1;
+  }
+  .view.drag-blocked .drop-overlay-inner .drop-icon { display: none; }
+
   /* Lightbox */
   #photoLightbox {
     position: fixed; inset: 0; z-index: 1000;
@@ -1149,6 +1188,12 @@
 
     <!-- SEARCH/ITEM VIEW -->
     <div class="view active" id="searchView">
+      <div class="drop-overlay" id="itemDropOverlay">
+        <div class="drop-overlay-inner">
+          <span class="drop-icon">📷</span>
+          <span id="itemDropLabel">Drop photos to add to item</span>
+        </div>
+      </div>
       <div class="item-detail" id="itemDetail">
         <div class="empty-state">
           <div class="big">📦</div>
@@ -1160,6 +1205,12 @@
 
     <!-- MAP VIEW -->
     <div class="view" id="mapView">
+      <div class="drop-overlay" id="mapDropOverlay">
+        <div class="drop-overlay-inner">
+          <span class="drop-icon">📷</span>
+          <span id="mapDropLabel">Drop photos to add to room</span>
+        </div>
+      </div>
       <div class="map-toolbar">
         <div id="mapBreadcrumb" class="breadcrumb" style="margin:0;flex:1"></div>
         <button id="editMapBtn" onclick="toggleMapEdit()">✏️ Edit Map</button>
@@ -3991,6 +4042,138 @@ const _resizeObs = new ResizeObserver(() => {
   if (currentTab === 'map') drawMap();
 });
 _resizeObs.observe(canvas);
+
+// ─── DRAG-AND-DROP IMAGE UPLOAD ───────────────────────────────────────────────
+// Items view: drop when an item is selected → upload to that item
+// Map view: drop when inside a location (mapStack non-empty) → upload to that location
+
+async function _uploadFiles(files, type, id) {
+  if (!files.length) return;
+  const imageFiles = files.filter(f => f.type.startsWith('image/'));
+  if (!imageFiles.length) { showToast('No image files in drop'); return; }
+  showToast(`Uploading ${imageFiles.length} photo${imageFiles.length>1?'s':''}…`);
+
+  for (const file of imageFiles) {
+    const blob = await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, 1200 / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width*scale); c.height = Math.round(img.height*scale);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob(b => resolve(b), 'image/jpeg', 0.80);
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    try {
+      const r = await apiFetch(`/api/images/${type}/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: blob
+      });
+      if (!r.ok) throw new Error(await r.text());
+    } catch (e) {
+      showToast('Upload failed: ' + e.message); return;
+    }
+  }
+
+  showToast(`${imageFiles.length} photo${imageFiles.length>1?'s':''} saved`);
+  if (type === 'items') renderItemDetail(id);
+  if (type === 'locations') renderMapLocationPhotos(id);
+}
+
+(function setupDragDrop() {
+  const searchView = document.getElementById('searchView');
+  const mapView    = document.getElementById('mapView');
+  let dragDepth = 0; // counts enter/leave on document to know when drag truly exits page
+
+  function getActiveDropTarget() {
+    // Returns { el, type, id, label } or null
+    if (searchView.classList.contains('active') || currentTab === 'search') {
+      if (selectedItemId) {
+        const item = (state?.items||[]).find(i=>i.id===selectedItemId);
+        return { el: searchView, type: 'items', id: selectedItemId,
+                 label: item ? `Drop photos → ${item.name}` : 'Drop photos to add to item',
+                 labelEl: 'itemDropLabel' };
+      }
+      return { el: searchView, type: null, labelEl: 'itemDropLabel', label: 'Select an item first' };
+    }
+    if (mapView.classList.contains('active') || currentTab === 'map') {
+      if (mapStack.length) {
+        const locId = mapStack[mapStack.length-1];
+        const loc = getLocation(locId);
+        return { el: mapView, type: 'locations', id: locId,
+                 label: loc ? `Drop photos → ${loc.name}` : 'Drop photos to add to room',
+                 labelEl: 'mapDropLabel' };
+      }
+      return { el: mapView, type: null, labelEl: 'mapDropLabel', label: 'Enter a room first' };
+    }
+    return null;
+  }
+
+  function showOverlay(target) {
+    if (!target) return;
+    document.getElementById(target.labelEl).textContent = target.label;
+    target.el.classList.add('drag-active');
+    if (!target.type) target.el.classList.add('drag-blocked');
+    else target.el.classList.remove('drag-blocked');
+  }
+
+  function hideOverlay(target) {
+    if (!target) return;
+    target.el.classList.remove('drag-active', 'drag-blocked');
+  }
+
+  let _lastTarget = null;
+
+  document.addEventListener('dragenter', e => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragDepth++;
+    if (dragDepth === 1) {
+      _lastTarget = getActiveDropTarget();
+      showOverlay(_lastTarget);
+    }
+  });
+
+  document.addEventListener('dragleave', e => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragDepth--;
+    if (dragDepth <= 0) {
+      dragDepth = 0;
+      hideOverlay(_lastTarget);
+      _lastTarget = null;
+    }
+  });
+
+  document.addEventListener('dragover', e => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    const target = _lastTarget;
+    if (target && target.type) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    } else if (target) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'none';
+    }
+  });
+
+  document.addEventListener('drop', async e => {
+    e.preventDefault();
+    dragDepth = 0;
+    const target = _lastTarget;
+    hideOverlay(target);
+    _lastTarget = null;
+    if (!target || !target.type) { showToast(target?.label || 'Cannot drop here'); return; }
+    if (!guardEdit()) return;
+    const files = [...e.dataTransfer.files];
+    await _uploadFiles(files, target.type, target.id);
+  });
+})();
 </script>
 <!-- Loan modal -->
 <div id="loanModal" onclick="if(event.target===this)closeLoanModal()">
