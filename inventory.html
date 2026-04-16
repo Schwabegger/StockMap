@@ -1211,10 +1211,24 @@
         <input type="text" id="searchInput" placeholder="e.g. paper, stapler…" oninput="renderItemList()">
       </div>
     </div>
-    <!-- Location filter banner (shown when a map room is selected) -->
-    <div id="sidebarLocFilter" style="display:none;padding:8px 12px;background:rgba(71,200,255,.08);border-bottom:1px solid var(--border);gap:6px;align-items:center">
+    <!-- Scope bar: shown when inside a room on the map -->
+    <div id="scopeBar" style="display:none;padding:6px 10px;border-bottom:1px solid var(--border);align-items:center;gap:6px;background:var(--surface2)">
       <div style="flex:1;min-width:0">
-        <div style="font-size:.7rem;color:var(--accent2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Showing</div>
+        <div id="scopeRoomName" style="font-size:.78rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--accent2)"></div>
+      </div>
+      <div style="display:flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:2px;flex-shrink:0">
+        <button id="scopeBtnCurrent" onclick="setScopeMode('current')"
+          style="padding:3px 10px;border:none;border-radius:4px;font-size:.72rem;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;background:var(--accent);color:#000">Current</button>
+        <button id="scopeBtnAll" onclick="setScopeMode('all')"
+          style="padding:3px 10px;border:none;border-radius:4px;font-size:.72rem;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;background:transparent;color:var(--muted)">All</button>
+      </div>
+      <button onclick="quickAddItem(currentRoomLocId)" title="Add item to this room"
+        style="background:var(--accent);border:none;color:#000;cursor:pointer;font-size:.75rem;font-weight:700;font-family:'DM Sans',sans-serif;padding:5px 10px;border-radius:6px;flex-shrink:0;white-space:nowrap">＋ Add</button>
+    </div>
+    <!-- Location filter banner (shown when a sub-room is selected within current room) -->
+    <div id="sidebarLocFilter" style="display:none;padding:6px 12px;background:rgba(71,200,255,.08);border-bottom:1px solid var(--border);gap:6px;align-items:center">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:.7rem;color:var(--accent2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px">Filtered</div>
         <div id="sidebarLocName" style="font-size:.85rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
         <div id="sidebarLocSub" style="font-size:.7rem;color:var(--muted);font-family:'Space Mono',monospace;margin-top:1px"></div>
       </div>
@@ -1789,7 +1803,55 @@ function mobileSwitchTab(tab) { switchTab(tab); }
 
 // ─── ITEM LIST ────────────────────────────────────────────────────────────────
 let selectedItemId = null;
-let sidebarLocFilter = null; // locId whose items to show (includes descendants)
+let sidebarLocFilter = null;  // locId whose items to show (includes descendants)
+let currentRoomLocId = null;  // locId of the room we are currently *inside* on the map
+let itemScopeMode    = 'current'; // 'current' | 'all'
+
+function updateScopeBar() {
+  const bar = document.getElementById('scopeBar');
+  if (!bar) return;
+  if (currentRoomLocId) {
+    const loc = getLocation(currentRoomLocId);
+    bar.style.display = 'flex';
+    document.getElementById('scopeRoomName').textContent = loc?.name || '';
+    document.getElementById('scopeBtnCurrent').style.background = itemScopeMode === 'current' ? 'var(--accent)' : 'transparent';
+    document.getElementById('scopeBtnCurrent').style.color      = itemScopeMode === 'current' ? '#000' : 'var(--muted)';
+    document.getElementById('scopeBtnAll').style.background     = itemScopeMode === 'all'     ? 'var(--accent)' : 'transparent';
+    document.getElementById('scopeBtnAll').style.color          = itemScopeMode === 'all'     ? '#000' : 'var(--muted)';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function setScopeMode(mode) {
+  itemScopeMode = mode;
+  // When switching to current, apply the current room filter; clear any sub-room selection
+  if (mode === 'current' && currentRoomLocId) {
+    mapSelectedLocId = null;
+    sidebarLocFilter = currentRoomLocId;
+    document.getElementById('sidebarLocFilter').style.display = 'none';
+  } else if (mode === 'all') {
+    mapSelectedLocId = null;
+    sidebarLocFilter = null;
+    document.getElementById('sidebarLocFilter').style.display = 'none';
+  }
+  updateScopeBar();
+  renderItemList();
+}
+
+function setCurrentRoom(locId) {
+  currentRoomLocId = locId;
+  if (locId && itemScopeMode === 'current') {
+    sidebarLocFilter = locId;
+    document.getElementById('sidebarLocFilter').style.display = 'none';
+  } else if (!locId) {
+    // Left all rooms — back to root
+    sidebarLocFilter = null;
+    document.getElementById('sidebarLocFilter').style.display = 'none';
+  }
+  updateScopeBar();
+  renderItemList();
+}
 
 function setLocationFilter(locId) {
   sidebarLocFilter = locId;
@@ -1812,9 +1874,14 @@ function setLocationFilter(locId) {
 }
 
 function clearLocationFilter() {
-  sidebarLocFilter = null;
   mapSelectedLocId = null;
   document.getElementById('sidebarLocFilter').style.display = 'none';
+  // Return to current-room scope if inside a room, otherwise global
+  if (currentRoomLocId && itemScopeMode === 'current') {
+    sidebarLocFilter = currentRoomLocId;
+  } else {
+    sidebarLocFilter = null;
+  }
   drawMap();
   renderItemList();
 }
@@ -2223,12 +2290,11 @@ function mapGoTo(stackIndex) {
   else mapStack = mapStack.slice(0, stackIndex);
   selectedRoomIds.clear();
   mapSelectedLocId = null;
-  clearLocationFilter();
   vp = {x:0,y:0,scale:1}; updateZoomLabel();
-  // Clear or show room photos for current level
   const locId = mapStack.length ? mapStack[mapStack.length-1] : null;
   if (locId) renderMapLocationPhotos(locId);
   else { const el=document.getElementById('mapLocPhotos'); if(el) el.innerHTML=''; }
+  setCurrentRoom(locId);
   renderMap();
 }
 
@@ -2238,11 +2304,10 @@ function mapEnter(locId) {
   mapSelectedLocId = null;
   mapEditMode = false;
   document.getElementById('editMapBtn').textContent = '✏️ Edit Map';
-  clearLocationFilter();
   vp = {x:0,y:0,scale:1}; updateZoomLabel();
+  setCurrentRoom(locId);
   renderMap();
   updateMapUI();
-  // Show room photos
   renderMapLocationPhotos(locId);
 }
 
@@ -3487,6 +3552,7 @@ function clearAllData() {
   }
   selectedItemId = null;
   mapStack = []; mapEditMode = false;
+  currentRoomLocId = null;
   document.getElementById('editMapBtn').textContent = '✏️ Edit Map';
   clearLocationFilter();
   clearItemForm();
