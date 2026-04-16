@@ -3670,6 +3670,7 @@ async function renderPhotoStrip(type, id, container, editable, cacheBust, opts={
     return `<div class="${cls}" ${clickHandler}>
       <img src="${url}" loading="lazy" alt="photo ${i+1}" crossorigin="anonymous">
       ${editable && !opts.selectMode ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${filename}')" title="Delete">✕</button>` : ''}
+      ${opts.selectMode ? `<button class="del-photo" style="left:2px;right:auto" onclick="event.stopPropagation();openLightboxURLs(window['${stripId}'],${i},'${type}','${id}')" title="Preview">🔍</button>` : ''}
     </div>`;
   }).join('');
 
@@ -3976,7 +3977,10 @@ function renderMapLocationPhotos(locId) {
 function fmtDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+  const dd   = String(d.getDate()).padStart(2,'0');
+  const mm   = String(d.getMonth()+1).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
 }
 
 function isOverdue(tx) {
@@ -4080,8 +4084,12 @@ function renderLog() {
       ? (() => {
           const base = tx.permanent ? `/images/loans/${tx.id}` : `/images/items/${tx.itemId}`;
           const urls = tx.imageFilenames.map(f => `${base}/${f}`);
+          const urlsKey = `_txPhotos_${tx.id}`;
+          window[urlsKey] = urls;
+          const loanType = tx.permanent ? 'loans' : 'items';
+          const loanId   = tx.permanent ? tx.id : tx.itemId;
           return `<div class="tx-loan-photos">${urls.map((url,i) =>
-            `<img src="${url}" class="tx-loan-photo" onclick="openLightboxURLs(${JSON.stringify(urls)},${i},'loans','${tx.id}')" title="${tx.imageFilenames[i]}">`
+            `<img src="${url}" class="tx-loan-photo" onclick="openLightboxURLs(window['${urlsKey}'],${i},'${loanType}','${loanId}')" title="${tx.imageFilenames[i]}">`
           ).join('')}</div>`;
         })()
       : '';
