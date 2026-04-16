@@ -400,6 +400,29 @@
   }
   .photo-thumb:hover .del-photo,
   .photo-thumb:focus-within .del-photo { opacity: 1; }
+
+  /* Loaned-out overlay on item photo strip */
+  .photo-thumb.loaned img { opacity: .38; }
+  .photo-thumb.loaned::after {
+    content: '📤';
+    position: absolute; bottom: 3px; right: 4px;
+    font-size: .75rem; line-height: 1;
+    pointer-events: none;
+  }
+  /* Selectable thumb in loan modal */
+  .photo-thumb.selectable { cursor: pointer; }
+  .photo-thumb.selectable.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .photo-thumb.selectable.selected::after {
+    content: '✓';
+    position: absolute; bottom: 3px; right: 4px;
+    font-size: .8rem; font-weight: 700;
+    color: var(--accent); line-height: 1;
+    text-shadow: 0 0 4px #000;
+    pointer-events: none;
+  }
   .photo-add-btn {
     width: 80px; height: 80px;
     border-radius: 8px;
@@ -929,6 +952,22 @@
     gap: 10px;
   }
 
+  .tx-loan-photos {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .tx-loan-photo {
+    width: 56px; height: 56px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .tx-loan-photo:hover { border-color: var(--accent2); }
+
   .tx-badge {
     display: inline-block;
     padding: 2px 8px;
@@ -966,6 +1005,8 @@
     padding: 26px;
     width: 400px;
     max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -3600,27 +3641,39 @@ async function handlePhotoUpload(event) {
 }
 
 // ── Fetch and render photo strip ──────────────────────────────────────────────
-async function renderPhotoStrip(type, id, container, editable, cacheBust) {
+async function renderPhotoStrip(type, id, container, editable, cacheBust, opts={}) {
+  // opts: { loanedFilenames: Set, selectMode: bool, selectedFilenames: Set, onToggle: fn }
   let urls = [];
   try {
     const r = await apiFetch(`/api/images/${type}/${id}`);
     if (r.ok) { const d = await r.json(); urls = d.urls || []; }
   } catch {}
 
-  // Optionally append a cache-buster (e.g. after a rotate) so browsers reload the file
   const bust = cacheBust ? `?_r=${cacheBust}` : '';
   const displayUrls = urls.map(u => u + bust);
 
-  // Store url list in a closure-captured variable so onclick doesn't need to embed JSON in HTML
   const stripId = `strip-${type}-${id}-${Date.now()}`;
   window[stripId] = displayUrls;
-  const thumbs = displayUrls.map((url, i) => `
-    <div class="photo-thumb" onclick="openLightboxURLs(window['${stripId}'],${i},'${type}','${id}')">
-      <img src="${url}" loading="lazy" alt="photo ${i+1}" crossorigin="anonymous">
-      ${editable ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${urls[i].split('/').pop()}')" title="Delete">✕</button>` : ''}
-    </div>`).join('');
 
-  const addBtn = editable ? `
+  const thumbs = displayUrls.map((url, i) => {
+    const filename = urls[i].split('/').pop();
+    const isLoaned   = opts.loanedFilenames?.has(filename);
+    const isSelected = opts.selectedFilenames?.has(filename);
+    let cls = 'photo-thumb';
+    if (isLoaned)   cls += ' loaned';
+    if (opts.selectMode) cls += ' selectable' + (isSelected ? ' selected' : '');
+
+    const clickHandler = opts.selectMode
+      ? `onclick="toggleLoanPhoto('${filename}',this)"`
+      : `onclick="openLightboxURLs(window['${stripId}'],${i},'${type}','${id}')"`;
+
+    return `<div class="${cls}" ${clickHandler}>
+      <img src="${url}" loading="lazy" alt="photo ${i+1}" crossorigin="anonymous">
+      ${editable && !opts.selectMode ? `<button class="del-photo" onclick="event.stopPropagation();deletePhotoURL('${type}','${id}','${filename}')" title="Delete">✕</button>` : ''}
+    </div>`;
+  }).join('');
+
+  const addBtn = editable && !opts.selectMode ? `
     <button class="photo-add-btn" onclick="openPhotoPicker('${type}','${id}')" title="Add photo">
       <span class="add-icon">📷</span><span>Add</span>
     </button>` : '';
@@ -3632,12 +3685,26 @@ async function renderPhotoStrip(type, id, container, editable, cacheBust) {
 // Placeholder for inline HTML rendering (photos loaded async after render)
 function photoStripPlaceholder(type, id, editable=true) {
   const containerId = `photos-${type}-${id}`;
-  // Kick off async load
   setTimeout(async () => {
     const el = document.getElementById(containerId);
-    if (el) await renderPhotoStrip(type, id, el, editable);
+    if (!el) return;
+    if (type === 'items') {
+      await renderItemPhotoStrip(id, el, editable);
+    } else {
+      await renderPhotoStrip(type, id, el, editable);
+    }
   }, 0);
   return `<div id="${containerId}" class="photo-strip"><span style="color:var(--muted);font-size:.8rem">Loading photos…</span></div>`;
+}
+
+// Item photo strip: computes loaned filenames from active loans and passes them as overlays
+async function renderItemPhotoStrip(itemId, container, editable) {
+  const loanedFilenames = new Set(
+    transactions
+      .filter(tx => tx.type==='loan' && tx.itemId===itemId && !tx.permanent && !tx.returned)
+      .flatMap(tx => tx.imageFilenames || [])
+  );
+  return renderPhotoStrip('items', itemId, container, editable, null, { loanedFilenames });
 }
 
 async function deletePhotoURL(type, id, filename) {
@@ -3771,7 +3838,13 @@ async function lbRotate() {
 
     // Rebuild the thumbnail strip with cache-busted URLs so thumbs update too
     const container = document.getElementById(`photos-${_lbType}-${_lbId}`);
-    if (container) await renderPhotoStrip(_lbType, _lbId, container, true, Date.now());
+    if (container) {
+      if (_lbType === 'items') {
+        await renderItemPhotoStrip(_lbId, container, true);
+      } else {
+        await renderPhotoStrip(_lbType, _lbId, container, true, Date.now());
+      }
+    }
 
     showToast('Image rotated');
   } catch (e) {
@@ -3998,14 +4071,27 @@ function renderLog() {
     const actions = isAdmin ? `
       <div class="tx-actions">
         ${tx.type==='loan' && !tx.returned && !tx.permanent ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:.75rem" onclick="markReturned('${tx.id}')">✓ Returned</button>` : ''}
+        ${tx.type==='loan' && !tx.returned && tx.permanent  ? `<button class="btn btn-outline" style="padding:4px 10px;font-size:.75rem" onclick="undoPermanentLoan('${tx.id}')">↩ Undo</button>` : ''}
         <button class="delete-btn" onclick="deleteTransaction('${tx.id}')" title="Delete entry">🗑</button>
       </div>` : '';
+
+    // Permanent loan images live in loans/<txId>/, regular loan images stay on items/<itemId>/
+    const loanPhotos = (tx.type==='loan' && tx.imageFilenames?.length)
+      ? (() => {
+          const base = tx.permanent ? `/images/loans/${tx.id}` : `/images/items/${tx.itemId}`;
+          const urls = tx.imageFilenames.map(f => `${base}/${f}`);
+          return `<div class="tx-loan-photos">${urls.map((url,i) =>
+            `<img src="${url}" class="tx-loan-photo" onclick="openLightboxURLs(${JSON.stringify(urls)},${i},'loans','${tx.id}')" title="${tx.imageFilenames[i]}">`
+          ).join('')}</div>`;
+        })()
+      : '';
 
     return `<div class="${cardClass}" id="tx-${tx.id}">
       <div class="tx-icon">${tx.type==='relocation'?'📦':'📤'}</div>
       <div class="tx-body">
         <div class="tx-title">${iname} &times;${tx.qty||1} ${badge}</div>
         <div class="tx-meta">${details}</div>
+        ${loanPhotos}
         <div class="tx-meta" style="margin-top:3px;opacity:.6">${fmtDate(tx.date)}</div>
       </div>
       ${actions}
@@ -4025,19 +4111,68 @@ async function markReturned(txId) {
   }).catch(console.error);
   renderLog();
   renderItemList();
-  if (selectedItemId === tx.itemId) renderItemDetail(tx.itemId);
+  if (selectedItemId === tx.itemId) {
+    renderItemDetail(tx.itemId);
+    // Re-render photo strip so loaned overlays clear
+    const container = document.getElementById(`photos-items-${tx.itemId}`);
+    if (container) renderItemPhotoStrip(tx.itemId, container, true);
+  }
   showToast('Marked as returned');
 }
 
 async function deleteTransaction(txId) {
   if (!confirm('Delete this log entry?')) return;
-  transactions = transactions.filter(t=>t.id!==txId);
+  const tx = transactions.find(t => t.id === txId);
+  transactions = transactions.filter(t => t.id !== txId);
   await apiFetch(API + '/transactions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ delete: [txId] })
   }).catch(console.error);
+  // Permanent loan images live in loans/<txId>/ — delete the whole folder
+  if (tx?.type === 'loan' && tx.permanent && tx.imageFilenames?.length) {
+    apiFetch(`/api/images/loans/${txId}`, { method: 'DELETE' }).catch(console.error);
+  }
   renderLog();
+  renderItemList();
+}
+
+async function undoPermanentLoan(txId) {
+  if (!confirm('Undo this permanent loan? Stock will be restored and images moved back to the item.')) return;
+  const tx = transactions.find(t => t.id === txId);
+  if (!tx) return;
+  // Restore stock to fromLocation (or first stock location)
+  const item = state.items.find(i => i.id === tx.itemId);
+  if (item && tx.fromLocationId) {
+    const entry = item.stock.find(s => s.locationId === tx.fromLocationId);
+    if (entry) entry.qty += tx.qty || 1;
+    else item.stock.push({ locationId: tx.fromLocationId, qty: tx.qty || 1 });
+    saveState();
+  }
+  // Move images back: loans/<txId>/ → items/<itemId>/
+  for (const fname of (tx.imageFilenames || [])) {
+    await apiFetch(`/api/images/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: { type:'loans', id:txId, filename:fname }, to: { type:'items', id:tx.itemId } })
+    }).catch(console.error);
+  }
+  // Mark as returned (soft-delete from active loans)
+  tx.returned = true;
+  tx.returnedDate = new Date().toISOString();
+  await apiFetch(API + '/transactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ update: [tx] })
+  }).catch(console.error);
+  renderLog();
+  renderItemList();
+  if (selectedItemId === tx.itemId) {
+    renderItemDetail(tx.itemId);
+    const container = document.getElementById(`photos-items-${tx.itemId}`);
+    if (container) renderItemPhotoStrip(tx.itemId, container, true);
+  }
+  showToast('Permanent loan undone — stock and images restored');
 }
 
 // ── Relocation dialog ─────────────────────────────────────────────────────────
@@ -4106,6 +4241,33 @@ async function confirmReloc() {
 }
 
 // ── Loan modal ────────────────────────────────────────────────────────────────
+let _loanSelectedPhotos = new Set(); // filenames selected for this loan
+
+function toggleLoanPhoto(filename, el) {
+  if (_loanSelectedPhotos.has(filename)) {
+    _loanSelectedPhotos.delete(filename);
+    el.classList.remove('selected');
+  } else {
+    _loanSelectedPhotos.add(filename);
+    el.classList.add('selected');
+  }
+}
+
+async function _loadLoanPhotoStrip(itemId) {
+  _loanSelectedPhotos = new Set();
+  const wrap  = document.getElementById('loanPhotoWrap');
+  const strip = document.getElementById('loanPhotoStrip');
+  if (!wrap || !strip) return;
+  strip.innerHTML = '<span style="color:var(--muted);font-size:.8rem">Loading…</span>';
+  wrap.style.display = '';
+  const urls = await renderPhotoStrip('items', itemId, strip, false, null, {
+    selectMode: true,
+    selectedFilenames: _loanSelectedPhotos
+  });
+  // Hide the section entirely if item has no photos
+  wrap.style.display = urls.length ? '' : 'none';
+}
+
 function openLoanModal(prefilledItemId) {
   if (window.__authRole !== 'admin') return;
   const sel = document.getElementById('loanItemSel');
@@ -4116,8 +4278,8 @@ function openLoanModal(prefilledItemId) {
   fromSel.innerHTML = '<option value="">— select —</option>' +
     state.locations.map(l => `<option value="${l.id}">${getLocationPath(l.id)}</option>`).join('');
 
-  // Auto-populate from location and available qty hint
-  function updateFromLoc() {
+  // Auto-populate from location, available qty hint, and photo strip
+  async function updateItem() {
     const item = state.items.find(i=>i.id===sel.value);
     if (!item) return;
     const first = item.stock.find(s=>s.qty>0);
@@ -4126,9 +4288,10 @@ function openLoanModal(prefilledItemId) {
     const loaned = getLoanedQty(item);
     const hint   = document.getElementById('loanAvailHint');
     if (hint) hint.textContent = loaned ? `(${avail} available, ${loaned} loaned out)` : `(${avail} available)`;
+    await _loadLoanPhotoStrip(sel.value);
   }
-  sel.onchange = updateFromLoc;
-  updateFromLoc();
+  sel.onchange = () => updateItem();
+  updateItem();
 
   document.getElementById('loanPermanent').checked = false;
   document.getElementById('loanReturnWrap').style.display = '';
@@ -4137,6 +4300,8 @@ function openLoanModal(prefilledItemId) {
   document.getElementById('loanBy').value = '';
   document.getElementById('loanNote').value = '';
   document.getElementById('loanQty').value = '1';
+  document.getElementById('loanDate').value = new Date().toISOString().slice(0,10);
+  document.getElementById('loanPhotoWrap').style.display = 'none';
   document.getElementById('loanModal').classList.add('visible');
 }
 
@@ -4171,24 +4336,44 @@ async function confirmLoan() {
     }
   }
 
+  const imageFilenames = [..._loanSelectedPhotos];
+  const loanDateVal = document.getElementById('loanDate').value;
+  const loanDate = loanDateVal
+    ? new Date(loanDateVal + 'T12:00:00').toISOString()
+    : new Date().toISOString();
+
+  const txId = uid();
   const tx = {
-    id: uid(), type: 'loan',
-    date: new Date().toISOString(),
+    id: txId, type: 'loan',
+    date: loanDate,
     itemId, qty, fromLocationId: fromLoc||null,
     borrower, permanent,
     returnDate: returnDate || null,
     returned: false,
     by: by || undefined,
-    note: note || undefined
+    note: note || undefined,
+    // permanent loans: images move to loans/<txId>/ folder
+    // regular loans:   images stay on item, referenced by filename
+    ...(imageFilenames.length ? { imageFilenames } : {})
   };
 
-  // Permanent loans are non-returnable — deduct from stock now
-  if (permanent && item && fromLoc) {
-    const entry = item.stock.find(s => s.locationId === fromLoc);
-    if (entry) {
-      entry.qty = Math.max(0, entry.qty - qty);
-      if (entry.qty === 0) item.stock = item.stock.filter(s => s.locationId !== fromLoc);
-      saveState();
+  if (permanent && item) {
+    // Deduct from stock
+    if (fromLoc) {
+      const entry = item.stock.find(s => s.locationId === fromLoc);
+      if (entry) {
+        entry.qty = Math.max(0, entry.qty - qty);
+        if (entry.qty === 0) item.stock = item.stock.filter(s => s.locationId !== fromLoc);
+        saveState();
+      }
+    }
+    // Move selected images from items/<itemId>/ → loans/<txId>/
+    for (const fname of imageFilenames) {
+      apiFetch(`/api/images/move`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: { type:'items', id:itemId, filename:fname }, to: { type:'loans', id:txId } })
+      }).catch(console.error);
     }
   }
 
@@ -4401,8 +4586,18 @@ async function _uploadFiles(files, type, id) {
       <input type="date" id="loanReturnDate">
     </div>
     <div class="loan-field">
+      <label>Loan Date <span style="font-weight:400;color:var(--muted);font-size:.8rem">(defaults to today)</span></label>
+      <input type="date" id="loanDate">
+    </div>
+    <div class="loan-field">
       <label>Note (optional)</label>
       <input type="text" id="loanNote" placeholder="e.g. for the workshop" autocomplete="off">
+    </div>
+    <div id="loanPhotoWrap" style="display:none">
+      <div class="loan-field">
+        <label>Photos going with this loan <span style="font-weight:400;color:var(--muted);font-size:.8rem">(optional — tap to select)</span></label>
+        <div id="loanPhotoStrip" class="photo-strip" style="margin-top:4px;max-height:264px;overflow-y:auto"></div>
+      </div>
     </div>
     <div class="loan-row">
       <button class="btn btn-accent" style="flex:1" onclick="confirmLoan()">Log Loan</button>

@@ -222,6 +222,7 @@ function applyTxPatch(patch) {
 
 // ── Image helpers ─────────────────────────────────────────────────────────────
 const MIME = { '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.png':'image/png', '.webp':'image/webp', '.gif':'image/gif' };
+const VALID_IMG_TYPES = new Set(['items', 'locations', 'loans']);
 
 async function ensureDir(dir) {
   await fs.promises.mkdir(dir, { recursive: true });
@@ -380,12 +381,48 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      // ── Move image  POST /api/images/move ──
+      // Body: { from: {type, id, filename}, to: {type, id} }
+      // Moves file, keeping filename. Returns new URL.
+      if (method === 'POST' && p === '/api/images/move') {
+        if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
+        const { from, to } = await readBodyJSON(req);
+        if (!from?.type || !from?.id || !from?.filename || !to?.type || !to?.id) {
+          json(400, {error:'Invalid move request'}); return;
+        }
+        if (!VALID_IMG_TYPES.has(from.type) || !VALID_IMG_TYPES.has(to.type)) {
+          json(400, {error:'Invalid type'}); return;
+        }
+        const fname = from.filename;
+        if (!MIME[path.extname(fname).toLowerCase()] || fname.includes('/') || fname.includes('..')) {
+          json(400, {error:'Invalid filename'}); return;
+        }
+        const srcPath = path.join(IMG_DIR, from.type, from.id, fname);
+        const dstDir  = path.join(IMG_DIR, to.type, to.id);
+        await ensureDir(dstDir);
+        await fs.promises.rename(srcPath, path.join(dstDir, fname));
+        json(200, { ok:true, url: `/images/${to.type}/${to.id}/${fname}` });
+        return;
+      }
+
+      // ── Delete all images for an entity  DELETE /api/images/:type/:id ──
+      const delAllMatch = p.match(/^\/api\/images\/([^/]+)\/([^/]+)$/);
+      if (method === 'DELETE' && delAllMatch) {
+        if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
+        const [, type, id] = delAllMatch;
+        if (!VALID_IMG_TYPES.has(type)) { json(400,{error:'Invalid type'}); return; }
+        const dir = path.join(IMG_DIR, type, id);
+        await fs.promises.rm(dir, { recursive: true, force: true }).catch(()=>{});
+        json(200, { ok:true });
+        return;
+      }
+
       // ── Upload image  POST /api/images/:type/:id  ──
-      // type = 'items' or 'locations', id = entity id
-      const uploadMatch = p.match(/^\/api\/images\/(items|locations)\/([^/]+)$/);
+      const uploadMatch = p.match(/^\/api\/images\/([^/]+)\/([^/]+)$/);
       if (method === 'POST' && uploadMatch) {
         if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
         const [, type, id] = uploadMatch;
+        if (!VALID_IMG_TYPES.has(type)) { json(400,{error:'Invalid type'}); return; }
         const ct = req.headers['content-type'] || '';
         const extMap = { 'image/jpeg':'.jpg', 'image/png':'.png', 'image/webp':'.webp', 'image/gif':'.gif' };
         const ext = extMap[ct.split(';')[0].trim()] || '.jpg';
@@ -394,25 +431,26 @@ const server = http.createServer(async (req, res) => {
         const fname = await nextImageName(type, id, ext);
         const buf = await readBodyBuffer(req, 15);
         await fs.promises.writeFile(path.join(dir, fname), buf);
-        // Return the URL path the client can use
         json(200, { ok:true, url: `/images/${type}/${id}/${fname}` });
         return;
       }
 
       // ── List images  GET /api/images/:type/:id ──
-      const listMatch = p.match(/^\/api\/images\/(items|locations)\/([^/]+)$/);
+      const listMatch = p.match(/^\/api\/images\/([^/]+)\/([^/]+)$/);
       if (method === 'GET' && listMatch) {
         const [, type, id] = listMatch;
+        if (!VALID_IMG_TYPES.has(type)) { json(400,{error:'Invalid type'}); return; }
         const files = await listImages(type, id);
         json(200, { urls: files.map(f => `/images/${type}/${id}/${f}`) });
         return;
       }
 
       // ── Overwrite image in place  PUT /api/images/:type/:id/:filename ──
-      const putMatch = p.match(/^\/api\/images\/(items|locations)\/([^/]+)\/([^/]+)$/);
+      const putMatch = p.match(/^\/api\/images\/([^/]+)\/([^/]+)\/([^/]+)$/);
       if (method === 'PUT' && putMatch) {
         if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
         const [, type, id, fname] = putMatch;
+        if (!VALID_IMG_TYPES.has(type)) { json(400,{error:'Invalid type'}); return; }
         if (!MIME[path.extname(fname).toLowerCase()] || fname.includes('/') || fname.includes('..')) {
           json(400, {error:'Invalid filename'}); return;
         }
@@ -424,11 +462,11 @@ const server = http.createServer(async (req, res) => {
       }
 
       // ── Delete image  DELETE /api/images/:type/:id/:filename ──
-      const delMatch = p.match(/^\/api\/images\/(items|locations)\/([^/]+)\/([^/]+)$/);
+      const delMatch = p.match(/^\/api\/images\/([^/]+)\/([^/]+)\/([^/]+)$/);
       if (method === 'DELETE' && delMatch) {
         if (auth.role !== 'admin') { json(403, {error:'Read-only account'}); return; }
         const [, type, id, fname] = delMatch;
-        // Safety: only allow known extensions, no path traversal
+        if (!VALID_IMG_TYPES.has(type)) { json(400,{error:'Invalid type'}); return; }
         if (!MIME[path.extname(fname).toLowerCase()] || fname.includes('/') || fname.includes('..')) {
           json(400, {error:'Invalid filename'}); return;
         }
@@ -439,10 +477,10 @@ const server = http.createServer(async (req, res) => {
       }
 
       // ── Serve image files  GET /images/:type/:id/:filename ──
-      const imgMatch = p.match(/^\/images\/(items|locations)\/([^/]+)\/([^/]+)$/);
+      const imgMatch = p.match(/^\/images\/([^/]+)\/([^/]+)\/([^/]+)$/);
       if (method === 'GET' && imgMatch) {
         const [, type, id, fname] = imgMatch;
-        if (!MIME[path.extname(fname).toLowerCase()] || fname.includes('..')) {
+        if (!VALID_IMG_TYPES.has(type) || !MIME[path.extname(fname).toLowerCase()] || fname.includes('..')) {
           res.writeHead(400); res.end(); return;
         }
         const fpath = path.join(IMG_DIR, type, id, fname);
@@ -450,7 +488,7 @@ const server = http.createServer(async (req, res) => {
           const data = await fs.promises.readFile(fpath);
           res.writeHead(200, {
             'Content-Type': MIME[path.extname(fname).toLowerCase()],
-            'Cache-Control': 'public, max-age=31536000'  // images are immutable
+            'Cache-Control': 'public, max-age=31536000'
           });
           res.end(data);
         } catch { res.writeHead(404); res.end(); }
