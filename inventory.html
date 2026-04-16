@@ -1699,6 +1699,17 @@ function getTotalQty(item) {
   return item.stock.reduce((s,e)=>s+e.qty, 0);
 }
 
+// Active (non-permanent, non-returned) loans reduce available qty
+function getLoanedQty(item) {
+  return transactions
+    .filter(tx => tx.type==='loan' && tx.itemId===item.id && !tx.permanent && !tx.returned)
+    .reduce((s,tx) => s + (tx.qty||0), 0);
+}
+
+function getAvailableQty(item) {
+  return Math.max(0, getTotalQty(item) - getLoanedQty(item));
+}
+
 // ─── TABS ──────────────────────────────────────────────────────────────────
 let currentTab = 'search';
 
@@ -1814,13 +1825,20 @@ function renderItemList() {
     list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">No items found</div>';
     return;
   }
-  list.innerHTML = filtered.map(item => `
+  list.innerHTML = filtered.map(item => {
+    const loaned = getLoanedQty(item);
+    const avail  = getAvailableQty(item);
+    const badge  = loaned
+      ? `<span class="qty-badge">${avail} <span style="opacity:.6;font-weight:400">(${loaned} out)</span></span>`
+      : `<span class="qty-badge">${avail}</span>`;
+    return `
     <div class="item-card ${selectedItemId===item.id?'selected':''}" onclick="selectItem('${item.id}')">
-      <span class="qty-badge">${getTotalQty(item)}</span>
+      ${badge}
       <div class="iname">${item.emoji||'📦'} ${item.name}</div>
       <div class="imeta">${getItemCategoryDisplay(item)}</div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function selectItem(id) {
@@ -1849,7 +1867,9 @@ function renderItemDetail(id) {
     loc: getLocation(s.locationId)
   })).filter(e=>e.loc);
 
-  const total = getTotalQty(item);
+  const total  = getTotalQty(item);
+  const loaned = getLoanedQty(item);
+  const avail  = getAvailableQty(item);
 
   detail.innerHTML = `
     <div class="breadcrumb">
@@ -1863,7 +1883,7 @@ function renderItemDetail(id) {
       <div class="detail-icon">${item.emoji||'📦'}</div>
       <div>
         <div class="detail-title">${item.name}</div>
-        <div class="detail-total">Total in stock: <strong style="color:var(--accent)">${total} units</strong></div>
+        <div class="detail-total">Available: <strong style="color:var(--accent)">${avail} units</strong>${loaned ? ` <span style="color:var(--muted);font-size:.85rem">(${loaned} loaned out, ${total} total)</span>` : ` <span style="color:var(--muted);font-size:.85rem">of ${total} total</span>`}</div>
         ${(item.categoryId||item.category)?`<span class="tag">${getItemCategoryDisplay(item)}</span>`:''}
       </div>
       <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
@@ -4004,6 +4024,8 @@ async function markReturned(txId) {
     body: JSON.stringify({ update: [tx] })
   }).catch(console.error);
   renderLog();
+  renderItemList();
+  if (selectedItemId === tx.itemId) renderItemDetail(tx.itemId);
   showToast('Marked as returned');
 }
 
@@ -4094,13 +4116,16 @@ function openLoanModal(prefilledItemId) {
   fromSel.innerHTML = '<option value="">— select —</option>' +
     state.locations.map(l => `<option value="${l.id}">${getLocationPath(l.id)}</option>`).join('');
 
-  // Auto-populate from location based on selected item's stock
+  // Auto-populate from location and available qty hint
   function updateFromLoc() {
     const item = state.items.find(i=>i.id===sel.value);
     if (!item) return;
-    // Pre-select first stock location
     const first = item.stock.find(s=>s.qty>0);
     if (first) fromSel.value = first.locationId;
+    const avail  = getAvailableQty(item);
+    const loaned = getLoanedQty(item);
+    const hint   = document.getElementById('loanAvailHint');
+    if (hint) hint.textContent = loaned ? `(${avail} available, ${loaned} loaned out)` : `(${avail} available)`;
   }
   sel.onchange = updateFromLoc;
   updateFromLoc();
@@ -4137,6 +4162,15 @@ async function confirmLoan() {
   if (!itemId)   { alert('Select an item'); return; }
   if (!borrower) { alert('Enter a borrower name'); return; }
 
+  const item = state.items.find(i => i.id === itemId);
+  if (item) {
+    const available = getAvailableQty(item);
+    if (qty > available) {
+      alert(`Only ${available} available (${getLoanedQty(item)} already loaned out).`);
+      return;
+    }
+  }
+
   const tx = {
     id: uid(), type: 'loan',
     date: new Date().toISOString(),
@@ -4147,8 +4181,21 @@ async function confirmLoan() {
     by: by || undefined,
     note: note || undefined
   };
+
+  // Permanent loans are non-returnable — deduct from stock now
+  if (permanent && item && fromLoc) {
+    const entry = item.stock.find(s => s.locationId === fromLoc);
+    if (entry) {
+      entry.qty = Math.max(0, entry.qty - qty);
+      if (entry.qty === 0) item.stock = item.stock.filter(s => s.locationId !== fromLoc);
+      saveState();
+    }
+  }
+
   await appendTransaction(tx);
   closeLoanModal();
+  renderItemList();
+  if (selectedItemId === itemId) renderItemDetail(itemId);
   if (currentTab === 'log') renderLog();
   showToast(`Loan to ${borrower} logged`);
 }
@@ -4168,8 +4215,8 @@ async function confirmLoan() {
   renderItemList();
   renderStockEntries();
   renderManage();
-  // Load transactions in background — non-critical for initial render
-  loadTransactions().then(() => updateLogBadge()).catch(console.error);
+  // Load transactions in background — re-render item list once loaded so loaned qty is accurate
+  loadTransactions().then(() => { updateLogBadge(); renderItemList(); }).catch(console.error);
 })();
 
 // Mouse back button (MB4) = navigate up one level on the map
@@ -4335,7 +4382,7 @@ async function _uploadFiles(files, type, id) {
       <select id="loanFromLoc"></select>
     </div>
     <div class="loan-field">
-      <label>Quantity</label>
+      <label>Quantity <span id="loanAvailHint" style="font-weight:400;color:var(--muted);font-size:.8rem"></span></label>
       <input type="number" id="loanQty" min="1" value="1">
     </div>
     <div class="loan-field">
