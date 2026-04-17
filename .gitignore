@@ -1,1 +1,6 @@
 env
+stock.json
+categories.json
+transactions.json
+images/
+.claude/
