@@ -2044,6 +2044,29 @@ function centerRoomInView(locId) {
   drawMap();
 }
 
+function fitRoomsInView(parentKey) {
+  const canvas = document.getElementById('mapCanvas');
+  const cssW = canvas._cssW || canvas.getBoundingClientRect().width;
+  const cssH = canvas._cssH || canvas.getBoundingClientRect().height;
+  if (cssW < 10 || cssH < 10) { vp = {x:0,y:0,scale:1}; updateZoomLabel(); return; }
+  const rooms = Object.values(getRoomsAtLevel(parentKey));
+  if (!rooms.length) { vp = {x:0,y:0,scale:1}; updateZoomLabel(); return; }
+  const pad = 40;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const r of rooms) {
+    minX = Math.min(minX, r.x);         minY = Math.min(minY, r.y);
+    maxX = Math.max(maxX, r.x + r.w);   maxY = Math.max(maxY, r.y + r.h);
+  }
+  const worldW = maxX - minX, worldH = maxY - minY;
+  const scale = Math.min(8, Math.max(0.15,
+    Math.min((cssW - pad*2) / worldW, (cssH - pad*2) / worldH)
+  ));
+  vp.scale = scale;
+  vp.x = cssW / 2 - (minX + worldW / 2) * scale;
+  vp.y = cssH / 2 - (minY + worldH / 2) * scale;
+  updateZoomLabel();
+}
+
 // ─── DRILL-DOWN MAP ───────────────────────────────────────────────────────────
 // mapRooms structure: { [parentLocId_or_'root']: { [childLocId]: {x,y,w,h,color,label} } }
 // 'root' level shows top-level locations
@@ -2092,8 +2115,8 @@ function resizeCanvas() {
 let vp = { x: 0, y: 0, scale: 1 }; // pan offset in CSS px, scale
 
 function resetView() {
-  vp = { x: 0, y: 0, scale: 1 };
-  updateZoomLabel();
+  resizeCanvas();
+  fitRoomsInView(currentMapParent());
   drawMap();
 }
 
@@ -2313,11 +2336,12 @@ function mapGoTo(stackIndex) {
   else mapStack = mapStack.slice(0, stackIndex);
   selectedRoomIds.clear();
   mapSelectedLocId = null;
-  vp = {x:0,y:0,scale:1}; updateZoomLabel();
   const locId = mapStack.length ? mapStack[mapStack.length-1] : null;
   if (locId) renderMapLocationPhotos(locId);
   else { const el=document.getElementById('mapLocPhotos'); if(el) el.innerHTML=''; }
   setCurrentRoom(locId);
+  resizeCanvas();
+  fitRoomsInView(currentMapParent());
   renderMap();
 }
 
@@ -2327,8 +2351,9 @@ function mapEnter(locId) {
   mapSelectedLocId = null;
   mapEditMode = false;
   document.getElementById('editMapBtn').textContent = '✏️ Edit Map';
-  vp = {x:0,y:0,scale:1}; updateZoomLabel();
   setCurrentRoom(locId);
+  resizeCanvas();
+  fitRoomsInView(currentMapParent());
   renderMap();
   updateMapUI();
   renderMapLocationPhotos(locId);
