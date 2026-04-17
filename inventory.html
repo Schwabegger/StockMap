@@ -2028,7 +2028,20 @@ function showLocationOnMap(locId) {
   // Pop the last one — we want to be at the parent level so the target is visible
   if (mapStack.length) mapStack.pop();
   switchTab('map');
-  setTimeout(() => { renderMap(); startRoomBlink(locId); }, 50);
+  setTimeout(() => { renderMap(); centerRoomInView(locId); startRoomBlink(locId); }, 50);
+}
+
+function centerRoomInView(locId) {
+  const parentKey = currentMapParent();
+  const rooms = getRoomsAtLevel(parentKey);
+  const room = rooms[locId];
+  if (!room) return;
+  const canvas = document.getElementById('mapCanvas');
+  const cssW = canvas._cssW || canvas.getBoundingClientRect().width;
+  const cssH = canvas._cssH || canvas.getBoundingClientRect().height;
+  vp.x = cssW / 2 - (room.x + room.w / 2) * vp.scale;
+  vp.y = cssH / 2 - (room.y + room.h / 2) * vp.scale;
+  drawMap();
 }
 
 // ─── DRILL-DOWN MAP ───────────────────────────────────────────────────────────
