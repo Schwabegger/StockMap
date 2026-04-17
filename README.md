@@ -55,6 +55,7 @@ Windows: double-click `start-server.bat`
 
 Linux / Mac:
 ```bash
+chmod +x start-server.sh
 ./start-server.sh
 ```
 
