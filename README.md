@@ -55,6 +55,7 @@ Windows: double-click `start-server.bat`
 
 Linux / Mac:
 ```bash
+# Grant execute permission (needed once after downloading — zip/git downloads strip it)
 chmod +x start-server.sh
 ./start-server.sh
 ```
