@@ -2028,7 +2028,7 @@ function showLocationOnMap(locId) {
   // Pop the last one — we want to be at the parent level so the target is visible
   if (mapStack.length) mapStack.pop();
   switchTab('map');
-  setTimeout(() => { renderMap(); }, 50);
+  setTimeout(() => { renderMap(); startRoomBlink(locId); }, 50);
 }
 
 // ─── DRILL-DOWN MAP ───────────────────────────────────────────────────────────
@@ -2161,10 +2161,20 @@ function drawMap() {
     const isDragging  = dragState?.mode==='move' && dragState.locIds?.has(locId);
     const color = room.color||'#47c8ff';
 
+    const blinkT = (mapBlinkLocId === locId) ? Math.max(0, mapBlinkAlpha) : 0;
     ctx.save();
-    ctx.fillStyle   = (isDragging||isInspected) ? color+'55' : ((isHovered||isSelected) ? color+'44' : color+'1e');
-    ctx.strokeStyle = isDragging ? '#fff' : (isInspected ? color : (isSelected ? '#fff' : (isHovered ? color : color+'99')));
-    ctx.lineWidth   = ((isDragging||isInspected||isSelected) ? 2.5 : (isHovered ? 2 : 1.5)) / vp.scale;
+    if (blinkT > 0) {
+      // Interpolate between normal and highlighted style
+      const fillAlpha  = Math.round(0x1e + blinkT * (0xbb - 0x1e)).toString(16).padStart(2,'0');
+      const strokeAlpha= Math.round(0x99 + blinkT * (0xff - 0x99)).toString(16).padStart(2,'0');
+      ctx.fillStyle   = color + fillAlpha;
+      ctx.strokeStyle = color + strokeAlpha;
+      ctx.lineWidth   = (1.5 + blinkT * 2.5) / vp.scale;
+    } else {
+      ctx.fillStyle   = (isDragging||isInspected) ? color+'55' : ((isHovered||isSelected) ? color+'44' : color+'1e');
+      ctx.strokeStyle = isDragging ? '#fff' : (isInspected ? color : (isSelected ? '#fff' : (isHovered ? color : color+'99')));
+      ctx.lineWidth   = ((isDragging||isInspected||isSelected) ? 2.5 : (isHovered ? 2 : 1.5)) / vp.scale;
+    }
     roundRect(ctx, room.x, room.y, room.w, room.h, 8/vp.scale);
     ctx.fill(); ctx.stroke();
 
@@ -2431,6 +2441,31 @@ const RESIZE_CURSORS = {
 let dragState = null;
 let mapSelectedLocId = null;
 let selectedRoomIds = new Set(); // multi-select in edit mode
+let mapBlinkLocId = null;   // room currently pulsing
+let mapBlinkAlpha = 0;      // 0..1 pulse intensity, driven by rAF
+let mapBlinkRaf = null;     // requestAnimationFrame handle
+
+function startRoomBlink(locId) {
+  if (mapBlinkRaf) cancelAnimationFrame(mapBlinkRaf);
+  mapBlinkLocId = locId;
+  const DURATION = 3000; // ms total — 3 pulses × 1000ms each
+  const start = performance.now();
+  function frame(now) {
+    const t = (now - start) / DURATION;
+    if (t >= 1) {
+      mapBlinkLocId = null;
+      mapBlinkAlpha = 0;
+      mapBlinkRaf = null;
+      drawMap();
+      return;
+    }
+    // 3 pulses: abs(sine) so each half-cycle rises and falls smoothly
+    mapBlinkAlpha = Math.abs(Math.sin(t * Math.PI * 3));
+    drawMap();
+    mapBlinkRaf = requestAnimationFrame(frame);
+  }
+  mapBlinkRaf = requestAnimationFrame(frame);
+}
 
 // ── Grid snapping ─────────────────────────────────────────────────────────────
 const GRID = 20; // snap resolution in world px (half a grid cell for finer control)
