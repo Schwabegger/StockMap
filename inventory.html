@@ -1771,6 +1771,7 @@ let currentTab = 'search';
 function isMobile() { return window.innerWidth <= 768; }
 
 function switchTab(tab) {
+  const prevTab = currentTab;
   currentTab = tab;
   // Desktop tabs
   document.querySelectorAll('.tab').forEach((t,i)=>{
@@ -1794,7 +1795,24 @@ function switchTab(tab) {
     if (fab) fab.classList.toggle('visible', tab==='search');
   }
 
-  if (tab==='map') renderMap();
+  if (tab==='map') {
+    itemScopeMode = 'current';
+    sidebarLocFilter = currentRoomLocId || null;
+    updateScopeBar();
+    renderItemList();
+    renderMap();
+  }
+  if (tab==='search') {
+    // If coming from map, reset to global; if returning from elsewhere keep map state
+    if (prevTab === 'map') {
+      mapSelectedLocId = null;
+      sidebarLocFilter = null;
+      itemScopeMode = 'all';
+      document.getElementById('sidebarLocFilter').style.display = 'none';
+    }
+    updateScopeBar();
+    renderItemList();
+  }
   if (tab==='manage') renderManage();
   if (tab==='log') renderLog();
 }
@@ -1854,6 +1872,7 @@ function setCurrentRoom(locId) {
 }
 
 function setLocationFilter(locId) {
+  if (itemScopeMode === 'all') return;
   sidebarLocFilter = locId;
   const banner = document.getElementById('sidebarLocFilter');
   if (!locId) {
@@ -2028,7 +2047,14 @@ function showLocationOnMap(locId) {
   // Pop the last one — we want to be at the parent level so the target is visible
   if (mapStack.length) mapStack.pop();
   switchTab('map');
-  setTimeout(() => { renderMap(); centerRoomInView(locId); startRoomBlink(locId); }, 50);
+  setTimeout(() => {
+    renderMap();
+    centerRoomInView(locId);
+    startRoomBlink(locId);
+    mapSelectedLocId = locId;
+    setLocationFilter(locId);
+    drawMap();
+  }, 50);
 }
 
 function centerRoomInView(locId) {
