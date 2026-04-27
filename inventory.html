@@ -3830,6 +3830,14 @@ function addCategory() {
   const name = document.getElementById('newCatName').value.trim();
   const parentId = ssGet('newCatParentWrap') || null;
   if (!name) { alert('Enter a category name'); return; }
+  const duplicate = state.categories.some(c =>
+    c.name.toLowerCase() === name.toLowerCase() &&
+    (c.parentId || null) === (parentId || null)
+  );
+  if (duplicate) {
+    alert(`Category "${name}" already exists ${parentId ? 'in this parent' : 'at the top level'}.`);
+    return;
+  }
   state.categories.push({ id: uid(), name, parentId });
   saveState();
   document.getElementById('newCatName').value = '';
