@@ -716,6 +716,44 @@
 
   .form-row input:focus, .form-row select:focus { border-color: var(--accent); }
 
+  /* Searchable select */
+  .ss-wrap { position: relative; }
+  .ss-input {
+    width: 100%; box-sizing: border-box;
+    padding: 9px 12px; padding-right: 28px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text);
+    font-family: 'DM Sans', sans-serif; font-size: .9rem; outline: none;
+    transition: border-color .15s; cursor: pointer;
+  }
+  .ss-input:focus { border-color: var(--accent); }
+  .ss-arrow {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); pointer-events: none; font-size: .7rem;
+  }
+  .ss-dropdown {
+    position: absolute; z-index: 9999; top: calc(100% + 3px); left: 0; right: 0;
+    background: var(--surface2); border: 1px solid var(--accent);
+    border-radius: var(--radius); max-height: 220px; overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4); display: none;
+  }
+  .ss-dropdown.open { display: block; }
+  .ss-search {
+    width: 100%; box-sizing: border-box;
+    padding: 8px 10px; background: var(--surface);
+    border: none; border-bottom: 1px solid var(--border);
+    color: var(--text); font-family: 'DM Sans', sans-serif; font-size: .85rem;
+    outline: none;
+  }
+  .ss-option {
+    padding: 8px 12px; cursor: pointer; font-size: .88rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .ss-option:last-child { border-bottom: none; }
+  .ss-option:hover, .ss-option.active { background: rgba(232,255,71,.08); color: var(--accent); }
+  .ss-option.placeholder { color: var(--muted); font-style: italic; }
+  .ss-empty { padding: 10px 12px; color: var(--muted); font-size: .85rem; font-style: italic; }
+
   .btn {
     padding: 10px 18px;
     border-radius: var(--radius);
@@ -1344,9 +1382,7 @@
           </div>
           <div class="form-row">
             <label>Category</label>
-            <select id="mItemCatSel" style="width:100%">
-              <option value="">— none —</option>
-            </select>
+            <div id="mItemCatSelWrap"></div>
           </div>
           <div class="form-row">
             <label>Emoji Icon</label>
@@ -1376,7 +1412,7 @@
           </div>
           <div class="form-row">
             <label>Parent (optional)</label>
-            <select id="newCatParent"><option value="">— top level —</option></select>
+            <div id="newCatParentWrap"></div>
           </div>
           <button class="btn btn-accent" style="width:100%;margin-top:4px" onclick="addCategory()">Add Category</button>
         </div>
@@ -1393,7 +1429,7 @@
           </div>
           <div class="form-row">
             <label>Parent (optional)</label>
-            <select id="newLocParent"><option value="">— top level —</option></select>
+            <div id="newLocParentWrap"></div>
           </div>
           <button class="btn btn-accent" style="width:100%;margin-top:4px" onclick="addLocation()">Add Location</button>
         </div>
@@ -3611,6 +3647,99 @@ function renderManage() {
   populateLocationSelects();
 }
 
+// ─── SEARCHABLE SELECT ───────────────────────────────────────────────────────
+class SearchableSelect {
+  constructor(container, { placeholder = '— select —', options = [], value = '', onChange } = {}) {
+    this.options  = options;  // [{value, label}]
+    this.value    = value;
+    this.onChange = onChange;
+    this._open    = false;
+
+    container.innerHTML = `
+      <div class="ss-wrap">
+        <input class="ss-input" readonly placeholder="${placeholder}" autocomplete="off">
+        <span class="ss-arrow">▼</span>
+        <div class="ss-dropdown">
+          <input class="ss-search" placeholder="Search…" autocomplete="off">
+          <div class="ss-list"></div>
+        </div>
+      </div>`;
+
+    this._wrap     = container.querySelector('.ss-wrap');
+    this._input    = container.querySelector('.ss-input');
+    this._dropdown = container.querySelector('.ss-dropdown');
+    this._search   = container.querySelector('.ss-search');
+    this._list     = container.querySelector('.ss-list');
+
+    this._input.addEventListener('click', e => { e.stopPropagation(); this._toggle(); });
+    this._search.addEventListener('input', () => this._render());
+    this._search.addEventListener('click', e => e.stopPropagation());
+
+    document.addEventListener('click', () => this._close());
+
+    this.setOptions(options, value);
+  }
+
+  setOptions(options, value) {
+    this.options = options;
+    this.setValue(value, false);
+    this._render();
+  }
+
+  setValue(value, notify = true) {
+    this.value = value || '';
+    const opt = this.options.find(o => o.value === this.value);
+    this._input.value = opt ? opt.label : '';
+    if (notify && this.onChange) this.onChange(this.value);
+  }
+
+  _toggle() { this._open ? this._close() : this._open_(); }
+
+  _open_() {
+    this._open = true;
+    this._dropdown.classList.add('open');
+    this._search.value = '';
+    this._render();
+    this._search.focus();
+  }
+
+  _close() {
+    this._open = false;
+    this._dropdown.classList.remove('open');
+  }
+
+  _render() {
+    const q = this._search.value.toLowerCase();
+    const filtered = this.options.filter(o => o.label.toLowerCase().includes(q));
+    this._list.innerHTML =
+      (!q ? `<div class="ss-option placeholder" data-value="">${this._placeholder||'— none —'}</div>` : '') +
+      (filtered.length
+        ? filtered.map(o => `<div class="ss-option${o.value===this.value?' active':''}" data-value="${o.value}">${o.label}</div>`).join('')
+        : '<div class="ss-empty">No results</div>');
+    this._list.querySelectorAll('.ss-option').forEach(el => {
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        this.setValue(el.dataset.value);
+        this._close();
+      });
+    });
+  }
+}
+
+const _ssInstances = {}; // id -> SearchableSelect
+
+function makeSearchableSelect(wrapperId, { placeholder, options, value, onChange }) {
+  const container = document.getElementById(wrapperId);
+  if (!container) return null;
+  const ss = new SearchableSelect(container, { placeholder, options, value, onChange });
+  ss._placeholder = placeholder;
+  _ssInstances[wrapperId] = ss;
+  return ss;
+}
+
+function ssGet(wrapperId) { return _ssInstances[wrapperId]?.value || ''; }
+function ssSet(wrapperId, value) { _ssInstances[wrapperId]?.setValue(value, false); }
+
 // ─── CATEGORIES ──────────────────────────────────────────────────────────────
 
 function getCategoryPath(id) {
@@ -3671,29 +3800,35 @@ function buildCatTree(parentId) {
 }
 
 function populateCategorySelects() {
-  const all = state.categories;
-  // item form select
-  const itemSel = document.getElementById('mItemCatSel');
-  if (itemSel) {
-    const cur = itemSel.value;
-    itemSel.innerHTML = '<option value="">— none —</option>' +
-      all.map(c => `<option value="${c.id}">${getCategoryPath(c.id)}</option>`).join('');
-    if (cur) itemSel.value = cur;
+  const sorted = [...state.categories]
+    .map(c => ({ value: c.id, label: getCategoryPath(c.id) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  // item category select
+  if (document.getElementById('mItemCatSelWrap')) {
+    if (_ssInstances['mItemCatSelWrap']) {
+      const cur = ssGet('mItemCatSelWrap');
+      _ssInstances['mItemCatSelWrap'].setOptions(sorted, cur);
+    } else {
+      makeSearchableSelect('mItemCatSelWrap', { placeholder: '— none —', options: sorted });
+    }
   }
+
   // new category parent select
-  const parentSel = document.getElementById('newCatParent');
-  if (parentSel) {
-    const cur = parentSel.value;
-    parentSel.innerHTML = '<option value="">— top level —</option>' +
-      all.map(c => `<option value="${c.id}">${getCategoryPath(c.id)}</option>`).join('');
-    if (cur) parentSel.value = cur;
+  if (document.getElementById('newCatParentWrap')) {
+    if (_ssInstances['newCatParentWrap']) {
+      const cur = ssGet('newCatParentWrap');
+      _ssInstances['newCatParentWrap'].setOptions(sorted, cur);
+    } else {
+      makeSearchableSelect('newCatParentWrap', { placeholder: '— top level —', options: sorted });
+    }
   }
 }
 
 function addCategory() {
   if (!guardEdit()) return;
   const name = document.getElementById('newCatName').value.trim();
-  const parentId = document.getElementById('newCatParent').value || null;
+  const parentId = ssGet('newCatParentWrap') || null;
   if (!name) { alert('Enter a category name'); return; }
   state.categories.push({ id: uid(), name, parentId });
   saveState();
@@ -3746,18 +3881,24 @@ function toggleTree(id, header) {
 }
 
 function populateLocationSelects() {
-  const all = state.locations;
+  const sorted = [...state.locations]
+    .map(l => ({ value: l.id, label: getLocationPath(l.id) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
-  // Parent select in add location
-  const parentSel = document.getElementById('newLocParent');
-  parentSel.innerHTML = '<option value="">— top level —</option>' +
-    all.map(l=>`<option value="${l.id}">${getLocationPath(l.id)}</option>`).join('');
+  if (document.getElementById('newLocParentWrap')) {
+    if (_ssInstances['newLocParentWrap']) {
+      const cur = ssGet('newLocParentWrap');
+      _ssInstances['newLocParentWrap'].setOptions(sorted, cur);
+    } else {
+      makeSearchableSelect('newLocParentWrap', { placeholder: '— top level —', options: sorted });
+    }
+  }
 }
 
 function addLocation() {
   if (!guardEdit()) return;
   const name = document.getElementById('newLocName').value.trim();
-  const parentId = document.getElementById('newLocParent').value || null;
+  const parentId = ssGet('newLocParentWrap') || null;
   if (!name) { alert('Enter a location name'); return; }
   state.locations.push({id: uid(), name, parentId});
   saveState();
@@ -3822,26 +3963,35 @@ function addStockEntry() {
 }
 
 function renderStockEntries() {
-  const all = state.locations;
+  const sorted = [...state.locations]
+    .map(l => ({ value: l.id, label: getLocationPath(l.id) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
   const el = document.getElementById('stockEntries');
-  el.innerHTML = stockEntries.map((e,i) => `
+  el.innerHTML = stockEntries.map((e, i) => `
     <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-      <select onchange="stockEntries[${i}].locationId=this.value" style="flex:2;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:.85rem;outline:none">
-        <option value="">— select location —</option>
-        ${all.map(l=>`<option value="${l.id}" ${e.locationId===l.id?'selected':''}>${getLocationPath(l.id)}</option>`).join('')}
-      </select>
+      <div id="stockLocWrap_${i}" style="flex:2"></div>
       <input type="number" min="0" value="${e.qty}" onchange="stockEntries[${i}].qty=+this.value"
         style="width:64px;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:Space Mono,monospace;font-size:.85rem;outline:none">
       <button class="delete-btn" onclick="stockEntries.splice(${i},1);renderStockEntries()">✕</button>
     </div>
   `).join('');
+
+  stockEntries.forEach((e, i) => {
+    makeSearchableSelect(`stockLocWrap_${i}`, {
+      placeholder: '— select location —',
+      options: sorted,
+      value: e.locationId,
+      onChange: v => { stockEntries[i].locationId = v; }
+    });
+  });
 }
 
 function saveItem() {
   if (!guardEdit()) return;
   const name = document.getElementById('mItemName').value.trim();
   if (!name) { alert('Enter item name'); return; }
-  const categoryId = document.getElementById('mItemCatSel').value || null;
+  const categoryId = ssGet('mItemCatSelWrap') || null;
   const emoji = document.getElementById('mItemEmoji').value.trim() || '📦';
   const stock = stockEntries.filter(e=>e.locationId);
 
@@ -3860,7 +4010,7 @@ function saveItem() {
 function clearItemForm() {
   editingItemId = null;
   document.getElementById('mItemName').value = '';
-  document.getElementById('mItemCatSel').value = '';
+  ssSet('mItemCatSelWrap', '');
   document.getElementById('mItemEmoji').value = '';
   stockEntries = [];
   renderStockEntries();
@@ -3874,7 +4024,7 @@ function editItem(id) {
   setTimeout(()=>{
     editingItemId = id;
     document.getElementById('mItemName').value = item.name;
-    document.getElementById('mItemCatSel').value = item.categoryId||'';
+    ssSet('mItemCatSelWrap', item.categoryId||'');
     document.getElementById('mItemEmoji').value = item.emoji||'';
     stockEntries = item.stock.map(s=>({...s}));
     renderStockEntries();
