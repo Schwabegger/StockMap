@@ -388,7 +388,18 @@
     gap: 20px;
   }
 
-  @media (max-width: 700px) { .manage-grid { grid-template-columns: 1fr; } }
+  .item-form-card { grid-column: 1 / -1; }
+  .item-form-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .item-form-left { display: flex; flex-direction: column; }
+
+  @media (max-width: 700px) {
+    .manage-grid { grid-template-columns: 1fr; }
+    .item-form-cols { grid-template-columns: 1fr; }
+  }
 
   /* ── Photo gallery ──────────────────────────────────────────────────────── */
   .photo-strip {
@@ -654,6 +665,7 @@
     /* Manage */
     #manageView { padding: 12px; gap: 12px; }
     .manage-grid { grid-template-columns: 1fr; gap: 12px; }
+    .item-form-cols { grid-template-columns: 1fr; }
     .card { padding: 14px; }
     .form-row input, .form-row select { font-size: 16px; padding: 11px 12px; }
     .btn { padding: 12px 18px; font-size: .95rem; }
@@ -1374,30 +1386,34 @@
     <div class="view" id="manageView">
       <div class="manage-grid">
 
-        <div class="card">
+        <div class="card item-form-card">
           <h3>➕ Add / Edit Item</h3>
-          <div class="form-row">
-            <label>Item Name</label>
-            <input type="text" id="mItemName" placeholder="e.g. A4 Paper">
+          <div class="item-form-cols">
+            <div class="item-form-left">
+              <div class="form-row">
+                <label>Item Name</label>
+                <input type="text" id="mItemName" placeholder="e.g. A4 Paper">
+              </div>
+              <div class="form-row">
+                <label>Category</label>
+                <div id="mItemCatSelWrap"></div>
+              </div>
+              <div class="form-row">
+                <label>Emoji Icon</label>
+                <input type="text" id="mItemEmoji" placeholder="📄" maxlength="2">
+              </div>
+              <div style="display:flex;gap:8px;margin-top:auto;padding-top:12px">
+                <button class="btn btn-accent" style="flex:1" onclick="saveItem()">Save Item</button>
+                <button class="btn btn-outline" onclick="clearItemForm()">Clear</button>
+              </div>
+              <div id="editingLabel" style="font-size:.75rem;color:var(--muted);margin-top:8px;display:none"></div>
+            </div>
+            <div class="item-form-right">
+              <p class="section-title" style="margin-top:0">Stock Entries (location + qty)</p>
+              <div id="stockEntries"></div>
+              <button class="btn btn-outline" style="margin-top:8px;width:100%" onclick="addStockEntry()">+ Add Location Entry</button>
+            </div>
           </div>
-          <div class="form-row">
-            <label>Category</label>
-            <div id="mItemCatSelWrap"></div>
-          </div>
-          <div class="form-row">
-            <label>Emoji Icon</label>
-            <input type="text" id="mItemEmoji" placeholder="📄" maxlength="2">
-          </div>
-          <hr>
-          <p class="section-title">Stock Entries (location + qty)</p>
-          <div id="stockEntries"></div>
-          <button class="btn btn-outline" style="margin-top:8px;width:100%" onclick="addStockEntry()">+ Add Location Entry</button>
-          <hr>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn btn-accent" style="flex:1" onclick="saveItem()">Save Item</button>
-            <button class="btn btn-outline" onclick="clearItemForm()">Clear</button>
-          </div>
-          <div id="editingLabel" style="font-size:.75rem;color:var(--muted);margin-top:8px;display:none"></div>
         </div>
 
         <div class="card">
