@@ -172,6 +172,25 @@
     font-family: 'Space Mono', monospace;
   }
 
+  .cat-group { margin-bottom: 4px; }
+  .cat-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    user-select: none;
+    transition: all .15s;
+  }
+  .cat-group-header:hover { border-color: var(--accent); background: rgba(232,255,71,.04); }
+  .cat-group-arrow { font-size: .7rem; color: var(--muted); width: 10px; flex-shrink: 0; }
+  .cat-group-label { font-weight: 600; font-size: .88rem; flex: 1; }
+  .cat-group-count { font-size: .72rem; color: var(--muted); font-family: 'Space Mono', monospace; }
+  .cat-group-items { padding-left: 12px; margin-top: 4px; }
+
   .qty-badge {
     float: right;
     background: var(--accent);
@@ -1824,6 +1843,7 @@ let selectedItemId = null;
 let sidebarLocFilter = null;  // locId whose items to show (includes descendants)
 let currentRoomLocId = null;  // locId of the room we are currently *inside* on the map
 let itemScopeMode    = 'current'; // 'current' | 'all'
+let expandedCategories = new Set(); // root category ids expanded in grouped view
 
 function updateScopeBar() {
   const bar = document.getElementById('scopeBar');
@@ -1952,24 +1972,125 @@ function renderItemList() {
     list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:.85rem">No items found</div>';
     return;
   }
-  list.innerHTML = filtered.map(item => {
-    const loaned = getLoanedQty(item);
-    const avail  = getAvailableQty(item);
-    const badge  = loaned
-      ? `<span class="qty-badge">${avail} <span style="opacity:.6;font-weight:400">(${loaned} out)</span></span>`
-      : `<span class="qty-badge">${avail}</span>`;
+
+  // When searching, show flat results; otherwise group by root category
+  if (q) {
+    list.innerHTML = filtered.map(item => {
+      const loaned = getLoanedQty(item);
+      const avail  = getAvailableQty(item);
+      const badge  = loaned
+        ? `<span class="qty-badge">${avail} <span style="opacity:.6;font-weight:400">(${loaned} out)</span></span>`
+        : `<span class="qty-badge">${avail}</span>`;
+      return `
+      <div class="item-card ${selectedItemId===item.id?'selected':''}" data-id="${item.id}" onclick="selectItem('${item.id}')">
+        ${badge}
+        <div class="iname">${item.emoji||'📦'} ${item.name}</div>
+        <div class="imeta">${getItemCategoryDisplay(item)}</div>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  // Build a map: categoryId -> items directly assigned to that category
+  const itemsByCat = new Map();
+  itemsByCat.set(null, []); // uncategorized
+  filtered.forEach(item => {
+    const catId = item.categoryId || null;
+    if (!itemsByCat.has(catId)) itemsByCat.set(catId, []);
+    itemsByCat.get(catId).push(item);
+  });
+
+  // Recursive renderer: renders one category node (header + children + direct items)
+  // catId=null means the top-level virtual "Uncategorized" bucket
+  function renderCatNode(catId, depth) {
+    const key = catId || '__none__';
+    const expanded = expandedCategories.has(key);
+    const cat = catId ? state.categories.find(c => c.id === catId) : null;
+    const label = cat ? cat.name : 'Uncategorized';
+
+    // child categories that exist in filtered set (recursively)
+    const childCats = catId
+      ? state.categories.filter(c => c.parentId === catId)
+      : state.categories.filter(c => !c.parentId);
+
+    // only include children that have at least one filtered item somewhere in their subtree
+    function hasFilteredItems(cid) {
+      if (itemsByCat.has(cid) && itemsByCat.get(cid).length) return true;
+      return state.categories.filter(c => c.parentId === cid).some(c => hasFilteredItems(c.id));
+    }
+    const activeChildren = childCats.filter(c => hasFilteredItems(c.id));
+
+    const directItems = itemsByCat.get(catId) || [];
+
+    // total count for badge
+    function countAll(cid) {
+      let n = (itemsByCat.get(cid) || []).length;
+      state.categories.filter(c => c.parentId === cid).forEach(c => { n += countAll(c.id); });
+      return n;
+    }
+    const totalCount = catId ? countAll(catId) : directItems.length;
+
+    // item cards
+    const itemsHtml = directItems.map(item => {
+      const loaned = getLoanedQty(item);
+      const avail  = getAvailableQty(item);
+      const badge  = loaned
+        ? `<span class="qty-badge">${avail} <span style="opacity:.6;font-weight:400">(${loaned} out)</span></span>`
+        : `<span class="qty-badge">${avail}</span>`;
+      return `
+      <div class="item-card ${selectedItemId===item.id?'selected':''}" data-id="${item.id}" onclick="selectItem('${item.id}')">
+        ${badge}
+        <div class="iname">${item.emoji||'📦'} ${item.name}</div>
+      </div>`;
+    }).join('');
+
+    const childrenHtml = activeChildren
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(c => renderCatNode(c.id, depth + 1))
+      .join('');
+
+    const indent = depth * 10;
     return `
-    <div class="item-card ${selectedItemId===item.id?'selected':''}" onclick="selectItem('${item.id}')">
-      ${badge}
-      <div class="iname">${item.emoji||'📦'} ${item.name}</div>
-      <div class="imeta">${getItemCategoryDisplay(item)}</div>
-    </div>
-  `;
-  }).join('');
+    <div class="cat-group">
+      <div class="cat-group-header" style="padding-left:${12 + indent}px" onclick="toggleCategoryGroup('${key}')">
+        <span class="cat-group-arrow">${expanded ? '▼' : '▶'}</span>
+        <span class="cat-group-label">🏷️ ${label}</span>
+        <span class="cat-group-count">${totalCount} item${totalCount!==1?'s':''}</span>
+      </div>
+      ${expanded ? `<div class="cat-group-items">${childrenHtml}${itemsHtml}</div>` : ''}
+    </div>`;
+  }
+
+  // Top-level: root categories that have filtered items, sorted alpha; uncategorized last
+  const rootCats = state.categories.filter(c => !c.parentId);
+  function hasAny(cid) {
+    if (itemsByCat.has(cid) && itemsByCat.get(cid).length) return true;
+    return state.categories.filter(c => c.parentId === cid).some(c => hasAny(c.id));
+  }
+  const activeRoots = rootCats.filter(c => hasAny(c.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const uncategorized = itemsByCat.get(null) || [];
+
+  list.innerHTML = activeRoots.map(c => renderCatNode(c.id, 0)).join('') +
+    (uncategorized.length ? renderCatNode(null, 0) : '');
 }
 
 function selectItem(id) {
   selectedItemId = id;
+  // expand entire ancestor chain so the item is visible
+  const item = state.items.find(i => i.id === id);
+  if (item) {
+    let cat = item.categoryId ? state.categories.find(c => c.id === item.categoryId) : null;
+    if (cat) {
+      // expand the item's own category and all ancestors
+      let cur = cat;
+      while (cur) {
+        expandedCategories.add(cur.id);
+        cur = cur.parentId ? state.categories.find(c => c.id === cur.parentId) : null;
+      }
+    } else {
+      expandedCategories.add('__none__');
+    }
+  }
   renderItemList();
   renderItemDetail(id);
   if (currentTab !== 'search') switchTab('search');
@@ -3505,6 +3626,23 @@ function getItemCategoryDisplay(item) {
     if (p) return p;
   }
   return item.category || 'Uncategorized';
+}
+
+function getRootCategoryId(item) {
+  if (!item.categoryId) return null;
+  let cat = state.categories.find(c => c.id === item.categoryId);
+  if (!cat) return null;
+  while (cat.parentId) {
+    cat = state.categories.find(c => c.id === cat.parentId);
+    if (!cat) return null;
+  }
+  return cat.id;
+}
+
+function toggleCategoryGroup(catId) {
+  if (expandedCategories.has(catId)) expandedCategories.delete(catId);
+  else expandedCategories.add(catId);
+  renderItemList();
 }
 
 function renderCategoryTree() {
