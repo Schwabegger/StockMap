@@ -1402,9 +1402,6 @@
 
         <div class="card">
           <h3>🏷️ Categories</h3>
-          <p class="section-title">Category Tree</p>
-          <div id="categoryTree"></div>
-          <hr>
           <p class="section-title">Add Category</p>
           <div class="form-row">
             <label>Name</label>
@@ -1415,13 +1412,13 @@
             <div id="newCatParentWrap"></div>
           </div>
           <button class="btn btn-accent" style="width:100%;margin-top:4px" onclick="addCategory()">Add Category</button>
+          <hr>
+          <p class="section-title">Category Tree</p>
+          <div id="categoryTree" style="max-height:320px;overflow-y:auto;padding-right:4px"></div>
         </div>
 
         <div class="card">
           <h3>🏢 Locations</h3>
-          <p class="section-title">Location Tree (drag to reorder not needed — just add hierarchy)</p>
-          <div id="locationTree"></div>
-          <hr>
           <p class="section-title">Add Location</p>
           <div class="form-row">
             <label>Name</label>
@@ -1432,6 +1429,9 @@
             <div id="newLocParentWrap"></div>
           </div>
           <button class="btn btn-accent" style="width:100%;margin-top:4px" onclick="addLocation()">Add Location</button>
+          <hr>
+          <p class="section-title">Location Tree</p>
+          <div id="locationTree" style="max-height:320px;overflow-y:auto;padding-right:4px"></div>
         </div>
 
       </div>
