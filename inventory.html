@@ -2138,6 +2138,7 @@ function renderItemDetail(id) {
         ${window.__authRole==='admin' ? `
         <button class="btn btn-outline" style="font-size:.8rem;padding:7px 12px" onclick="openRelocModal('${item.id}')">📦 Relocation</button>
         <button class="btn btn-outline" style="font-size:.8rem;padding:7px 12px" onclick="openLoanModal('${item.id}')">📤 Loan</button>
+        <button class="btn btn-outline" style="font-size:.8rem;padding:7px 12px;color:#ff6b6b;border-color:#ff6b6b" onclick="deleteItem('${item.id}')">🗑️ Delete</button>
         ` : ''}
         <button class="btn btn-outline" onclick="editItem('${item.id}')">✏️ Edit</button>
       </div>
@@ -3882,6 +3883,21 @@ function editItem(id) {
     lbl.textContent = `Editing: ${item.name}`;
     document.getElementById('mItemName').focus();
   }, 100);
+}
+
+async function deleteItem(id) {
+  const item = state.items.find(i => i.id === id);
+  if (!item) return;
+  if (!confirm(`Delete "${item.name}"?\n\nThis removes the item and all its stock entries permanently.`)) return;
+  await fetch('/api/patch', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({items:{delete:[id]}})
+  });
+  state.items = state.items.filter(i => i.id !== id);
+  selectedItemId = null;
+  document.getElementById('itemDetail').innerHTML = '';
+  renderItemList();
 }
 
 // ─── PHOTO SYSTEM ────────────────────────────────────────────────────────────
